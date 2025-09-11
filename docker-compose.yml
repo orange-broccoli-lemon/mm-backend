@@ -8,5 +8,5 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./.env
+      - /var/lib/jenkins/workspace/Back_end_Pipeline/.env
     restart: unless-stopped
