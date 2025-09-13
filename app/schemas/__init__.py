@@ -1,5 +1,10 @@
 from .movie import Movie
+from .search import MovieSearchResult, PersonSearchResult, SearchResult, SearchResponse
 
 __all__ = [
-    "Movie"
+    "Movie", 
+    "MovieSearchResult", 
+    "PersonSearchResult", 
+    "SearchResult", 
+    "SearchResponse"
 ]

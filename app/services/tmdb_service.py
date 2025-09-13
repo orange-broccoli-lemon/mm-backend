@@ -2,7 +2,8 @@ from typing import List, Optional
 import httpx
 from datetime import datetime
 from app.core.config import get_settings
-from app.schemas import Movie
+from app.schemas import Movie, MovieSearchResult, PersonSearchResult, SearchResult
+
 
 class TMDBService:
     """TMDB API 통신 서비스"""
@@ -151,3 +152,64 @@ class TMDBService:
                 raise Exception(f"TMDB API 오류: {e.response.status_code}")
             except httpx.RequestError as e:
                 raise Exception(f"요청 실패: {str(e)}")
+
+    async def multi_search(self, query: str, language: str = None) -> List[SearchResult]:
+            """통합 검색"""
+            if language is None:
+                language = self.default_language
+                
+            url = f"{self.settings.tmdb_base_url}/search/multi"
+            
+            params = {
+                "query": query,
+                "language": language,
+                "page": 1,
+                "region": "KR",
+                "include_adult": "false"
+            }
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                try:
+                    response = await client.get(
+                        url,
+                        params=params,
+                        headers=self.settings.tmdb_headers
+                    )
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # 영화와 인물만 필터링
+                    results = []
+                    for result_data in data.get("results", []):
+                        media_type = result_data.get("media_type")
+                        
+                        if media_type == "movie":
+                            movie_result = MovieSearchResult(
+                                id=result_data.get("id"),
+                                media_type="movie",
+                                title=result_data.get("title", ""),
+                                overview=result_data.get("overview"),
+                                release_date=self._parse_date(result_data.get("release_date")),
+                                poster_path=result_data.get("poster_path"),
+                                vote_average=result_data.get("vote_average", 0.0)
+                            )
+                            results.append(movie_result)
+                        
+                        elif media_type == "person":
+                            person_result = PersonSearchResult(
+                                id=result_data.get("id"),
+                                media_type="person",
+                                name=result_data.get("name", ""),
+                                profile_path=result_data.get("profile_path")
+                            )
+                            results.append(person_result)
+                        
+                        # TV 프로그램은 제외
+                    
+                    return results
+                    
+                except httpx.HTTPStatusError as e:
+                    raise Exception(f"TMDB API 오류: {e.response.status_code}")
+                except httpx.RequestError as e:
+                    raise Exception(f"요청 실패: {str(e)}")
