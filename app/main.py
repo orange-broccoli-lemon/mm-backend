@@ -1,24 +1,36 @@
-from typing import Union
-from fastapi import FastAPI, HTTPException
-from sqlalchemy import text
-from database import engine
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import get_settings
+from app.api.v1 import api_router
 
-app = FastAPI()
+# 설정 로드
+settings = get_settings()
+
+# FastAPI 앱 생성
+app = FastAPI(
+    title="mM",
+    description="Movie Community Service", 
+    version="1.0.0"
+)
+
+# CORS 미들웨어
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API v1 라우터 등록
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
-
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
-
-# DB 연결 테스트
-@app.get("/db-test")
-def test_db():
-    try:
-        with engine.connect() as connection:
-            result = connection.execute(text("SELECT 1"))
-            return {"status": "DB 연결 성공!", "result": result.fetchone()[0]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB 연결 실패: {str(e)}")
+    """서비스 루트"""
+    return {
+        "service": "mM",
+        "description": "Movie Community Service",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
