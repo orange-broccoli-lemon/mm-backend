@@ -35,18 +35,54 @@ class TMDBService:
             original_title=movie_data.get("original_title", ""),
             overview=movie_data.get("overview"),
             release_date=self._parse_date(movie_data.get("release_date")),
-            runtime=None,  # popular API에서는 제공하지 않음
+            runtime=None,
             poster_url=self._get_image_url(movie_data.get("poster_path"), "w500"),
             backdrop_url=self._get_image_url(movie_data.get("backdrop_path"), "w1280"),
             average_rating=round(movie_data.get("vote_average", 0.0), 2),
             is_adult=movie_data.get("adult", False),
-            trailer_url=None,  # popular API에서는 제공하지 않음
+            trailer_url=None,
             vote_average=movie_data.get("vote_average", 0.0),
             vote_count=movie_data.get("vote_count", 0),
             popularity=movie_data.get("popularity", 0.0),
             genre_ids=movie_data.get("genre_ids", []),
             original_language=movie_data.get("original_language", "")
         )
+    
+    def _format_movie_details(self, movie_data: dict) -> Movie:
+        """TMDB 응답 데이터를 상세 정보용 Movie 모델로 변환"""
+        # 트레일러 URL 찾기
+        trailer_url = None
+        videos = movie_data.get("videos", {}).get("results", [])
+        for video in videos:
+            if video.get("type") == "Trailer" and video.get("site") == "YouTube":
+                trailer_url = f"https://www.youtube.com/watch?v={video.get('key')}"
+                break
+        
+        # 장르 ID 추출
+        genre_ids = []
+        genres = movie_data.get("genres", [])
+        if isinstance(genres, list):
+            genre_ids = [genre.get("id") for genre in genres if genre.get("id")]
+        
+        return Movie(
+            tmdb_id=movie_data.get("id"),
+            title=movie_data.get("title", ""),
+            original_title=movie_data.get("original_title", ""),
+            overview=movie_data.get("overview"),
+            release_date=self._parse_date(movie_data.get("release_date")),
+            runtime=movie_data.get("runtime"),
+            poster_url=self._get_image_url(movie_data.get("poster_path"), "w500"),
+            backdrop_url=self._get_image_url(movie_data.get("backdrop_path"), "w1280"),
+            average_rating=round(movie_data.get("vote_average", 0.0), 2),
+            is_adult=movie_data.get("adult", False),
+            trailer_url=trailer_url,
+            vote_average=movie_data.get("vote_average", 0.0),
+            vote_count=movie_data.get("vote_count", 0),
+            popularity=movie_data.get("popularity", 0.0),
+            genre_ids=genre_ids,
+            original_language=movie_data.get("original_language", "")
+        )
+
     
     async def get_popular_movies_top10(self, language: str = None) -> List[Movie]:
         """인기 영화 10개 조회"""
@@ -71,7 +107,6 @@ class TMDBService:
                 response.raise_for_status()
                 data = response.json()
                 
-                # 10개만 추출하고 포맷팅
                 movies = []
                 for movie_data in data.get("results", [])[:10]:
                     formatted_movie = self._format_movie(movie_data)
@@ -80,6 +115,39 @@ class TMDBService:
                 return movies
                 
             except httpx.HTTPStatusError as e:
+                raise Exception(f"TMDB API 오류: {e.response.status_code}")
+            except httpx.RequestError as e:
+                raise Exception(f"요청 실패: {str(e)}")
+    
+    async def get_movie_details(self, tmdb_id: int, language: str = None) -> Movie:
+        """영화 상세 정보 조회"""
+        if language is None:
+            language = self.default_language
+            
+        url = f"{self.settings.tmdb_base_url}/movie/{tmdb_id}"
+        
+        params = {
+            "language": language,
+            "append_to_response": "videos"  # 비디오 정보도 함께 조회
+        }
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self.settings.tmdb_headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                # 상세 정보 포맷팅
+                movie = self._format_movie_details(data)
+                return movie
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise Exception(f"영화를 찾을 수 없습니다 (ID: {tmdb_id})")
                 raise Exception(f"TMDB API 오류: {e.response.status_code}")
             except httpx.RequestError as e:
                 raise Exception(f"요청 실패: {str(e)}")
