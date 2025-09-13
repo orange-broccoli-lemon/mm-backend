@@ -4,9 +4,9 @@ services:
   backend:
     build: .
     container_name: backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers 2
     ports:
-      - "8000:8000"
+      - "8080:8080"
     env_file:
       - /var/lib/jenkins/workspace/Back_end_Pipeline/.env
     restart: unless-stopped
