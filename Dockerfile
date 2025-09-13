@@ -12,5 +12,5 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 현재 폴더(django_backend)의 모든 소스 코드를 작업 디렉토리로 복사
+# 현재 폴더(backend)의 모든 소스 코드를 작업 디렉토리로 복사
 COPY . /app/
