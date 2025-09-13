@@ -24,4 +24,4 @@ SearchResult = Union[MovieSearchResult, PersonSearchResult]
 
 class SearchResponse(BaseModel):
     """통합 검색 응답"""
-    results: List[SearchResult] = Field(description="검색 결과 (영화 + 인물)")
+    results: List[SearchResult] = Field(description="검색 결과")
