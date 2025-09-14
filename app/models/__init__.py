@@ -3,5 +3,7 @@
 from .movie import MovieModel
 
 __all__ = [
-    "MovieModel"
+    "MovieModel",
+    "UserModel",
+    "GenreModel",
 ]
