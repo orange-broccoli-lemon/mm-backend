@@ -36,13 +36,13 @@ async def get_popular_movies(
         )
 
 @router.get(
-    "/{tmdb_id}",
+    "/{movie_id}",
     response_model=Movie,
     summary="영화 상세 정보",
     description="영화 상세 정보를 조회합니다. DB에서 먼저 찾고, 없으면 TMDB API에서 가져와 저장합니다."
 )
 async def get_movie_details(
-    tmdb_id: int = Path(description="TMDB 영화 ID"),
+    movie_id: int = Path(description="TMDB 영화 ID"),
     language: str = Query(
         default="ko-KR",
         description="언어 코드",
@@ -52,12 +52,12 @@ async def get_movie_details(
 ):
     """영화 상세 정보 조회"""
     try:
-        movie = await movie_service.get_movie_by_tmdb_id(tmdb_id)
+        movie = await movie_service.get_movie_by_movie_id(movie_id)
         
         if movie:
             return movie
         
-        tmdb_raw_data = await tmdb_service.get_movie_details(tmdb_id=tmdb_id, language=language)
+        tmdb_raw_data = await tmdb_service.get_movie_details(movie_id=movie_id, language=language)
         saved_movie = await movie_service.save_movie_from_tmdb_data(tmdb_raw_data)
         
         return saved_movie

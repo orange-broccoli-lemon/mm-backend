@@ -27,7 +27,6 @@ class CommentService:
             self.db.commit()
             self.db.refresh(comment_model)
             
-            # 좋아요 수와 현재 사용자 좋아요 여부 계산
             comment_dict = comment_model.__dict__.copy()
             comment_dict['likes_count'] = 0
             comment_dict['is_liked'] = False
@@ -40,7 +39,6 @@ class CommentService:
     
     async def get_movie_comments(self, movie_id: int, current_user_id: Optional[int] = None) -> List[Comment]:
         try:
-            # 댓글과 좋아요 수를 함께 조회
             stmt = select(
                 CommentModel,
                 func.count(CommentLikeModel.comment_id).label('likes_count')
@@ -55,7 +53,6 @@ class CommentService:
             
             comment_list = []
             for comment_model, likes_count in comments_with_likes:
-                # 현재 사용자의 좋아요 여부 확인
                 is_liked = False
                 if current_user_id:
                     like_stmt = select(CommentLikeModel).where(

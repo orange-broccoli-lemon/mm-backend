@@ -7,7 +7,7 @@ from decimal import Decimal
 
 class Comment(BaseModel):
     comment_id: Optional[int] = Field(default=None, description="댓글 ID")
-    movie_id: int = Field(description="영화 ID")
+    movie_id: int = Field(description="TMDB 영화 ID")
     user_id: int = Field(description="사용자 ID")
     content: str = Field(description="댓글 내용")
     is_spoiler: bool = Field(default=False, description="스포일러 여부")
@@ -21,7 +21,7 @@ class Comment(BaseModel):
         from_attributes = True
 
 class CommentCreate(BaseModel):
-    movie_id: int = Field(description="영화 ID")
+    movie_id: int = Field(description="TMDB 영화 ID")
     content: str = Field(description="댓글 내용", min_length=1, max_length=1000)
     is_spoiler: bool = Field(default=False, description="스포일러 여부")
     spoiler_confidence: Optional[Decimal] = Field(default=None, description="스포일러 신뢰도", ge=0, le=1)
