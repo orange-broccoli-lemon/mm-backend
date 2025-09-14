@@ -1,10 +1,16 @@
+# app/api/v1/movies.py
+
 from typing import List
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Depends
 from app.schemas import Movie
 from app.services.tmdb_service import TMDBService
+from app.services.movie_service import MovieService
 
 router = APIRouter()
 tmdb_service = TMDBService()
+
+def get_movie_service() -> MovieService:
+    return MovieService()
 
 @router.get(
     "/popular",
@@ -33,7 +39,7 @@ async def get_popular_movies(
     "/{tmdb_id}",
     response_model=Movie,
     summary="영화 상세 정보",
-    description="TMDB ID로 영화의 상세 정보를 조회합니다 (런타임, 트레일러 포함)."
+    description="영화 상세 정보를 조회합니다. DB에서 먼저 찾고, 없으면 TMDB API에서 가져와 저장합니다."
 )
 async def get_movie_details(
     tmdb_id: int = Path(description="TMDB 영화 ID"),
@@ -41,12 +47,21 @@ async def get_movie_details(
         default="ko-KR",
         description="언어 코드",
         regex="^[a-z]{2}-[A-Z]{2}$"
-    )
+    ),
+    movie_service: MovieService = Depends(get_movie_service)
 ):
     """영화 상세 정보 조회"""
     try:
-        movie = await tmdb_service.get_movie_details(tmdb_id=tmdb_id, language=language)
-        return movie
+        movie = await movie_service.get_movie_by_tmdb_id(tmdb_id)
+        
+        if movie:
+            return movie
+        
+        tmdb_raw_data = await tmdb_service.get_movie_details(tmdb_id=tmdb_id, language=language)
+        saved_movie = await movie_service.save_movie_from_tmdb_data(tmdb_raw_data)
+        
+        return saved_movie
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
