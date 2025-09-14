@@ -1,10 +1,16 @@
+# app/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.api.v1 import api_router
+from app.database import engine, Base
 
 # 설정 로드
 settings = get_settings()
+
+# 데이터베이스 테이블 생성
+Base.metadata.create_all(bind=engine)
 
 # FastAPI 앱 생성
 app = FastAPI(

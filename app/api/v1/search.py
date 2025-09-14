@@ -1,3 +1,5 @@
+# app/api/v1/search.py
+
 import re
 from fastapi import APIRouter, HTTPException, Query
 from app.schemas import SearchResponse
