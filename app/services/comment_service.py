@@ -8,6 +8,7 @@ from app.models.comment_like import CommentLikeModel
 from app.schemas.comment import Comment, CommentCreate, CommentUpdate
 from app.database import get_db
 
+
 class CommentService:
     
     def __init__(self):
@@ -27,9 +28,18 @@ class CommentService:
             self.db.commit()
             self.db.refresh(comment_model)
             
-            comment_dict = comment_model.__dict__.copy()
-            comment_dict['likes_count'] = 0
-            comment_dict['is_liked'] = False
+            comment_dict = {
+                'comment_id': comment_model.comment_id,
+                'movie_id': comment_model.movie_id,
+                'user_id': comment_model.user_id,
+                'content': comment_model.content,
+                'is_spoiler': comment_model.is_spoiler,
+                'spoiler_confidence': comment_model.spoiler_confidence,
+                'created_at': comment_model.created_at,
+                'updated_at': comment_model.updated_at,
+                'likes_count': 0,
+                'is_liked': False
+            }
             
             return Comment(**comment_dict)
             
@@ -64,9 +74,18 @@ class CommentService:
                     like_result = self.db.execute(like_stmt)
                     is_liked = like_result.scalar_one_or_none() is not None
                 
-                comment_dict = comment_model.__dict__.copy()
-                comment_dict['likes_count'] = likes_count or 0
-                comment_dict['is_liked'] = is_liked
+                comment_dict = {
+                    'comment_id': comment_model.comment_id,
+                    'movie_id': comment_model.movie_id,
+                    'user_id': comment_model.user_id,
+                    'content': comment_model.content,
+                    'is_spoiler': comment_model.is_spoiler,
+                    'spoiler_confidence': comment_model.spoiler_confidence,
+                    'created_at': comment_model.created_at,
+                    'updated_at': comment_model.updated_at,
+                    'likes_count': likes_count or 0,
+                    'is_liked': is_liked
+                }
                 
                 comment_list.append(Comment(**comment_dict))
             
@@ -102,9 +121,18 @@ class CommentService:
             likes_count = self._get_comment_likes_count(comment_id)
             is_liked = self._is_comment_liked_by_user(comment_id, user_id)
             
-            comment_dict = comment_model.__dict__.copy()
-            comment_dict['likes_count'] = likes_count
-            comment_dict['is_liked'] = is_liked
+            comment_dict = {
+                'comment_id': comment_model.comment_id,
+                'movie_id': comment_model.movie_id,
+                'user_id': comment_model.user_id,
+                'content': comment_model.content,
+                'is_spoiler': comment_model.is_spoiler,
+                'spoiler_confidence': comment_model.spoiler_confidence,
+                'created_at': comment_model.created_at,
+                'updated_at': comment_model.updated_at,
+                'likes_count': likes_count,
+                'is_liked': is_liked
+            }
             
             return Comment(**comment_dict)
             
@@ -177,9 +205,18 @@ class CommentService:
             # 업데이트된 좋아요 수 계산
             likes_count = self._get_comment_likes_count(comment_id)
             
-            comment_dict = comment_model.__dict__.copy()
-            comment_dict['likes_count'] = likes_count
-            comment_dict['is_liked'] = is_liked
+            comment_dict = {
+                'comment_id': comment_model.comment_id,
+                'movie_id': comment_model.movie_id,
+                'user_id': comment_model.user_id,
+                'content': comment_model.content,
+                'is_spoiler': comment_model.is_spoiler,
+                'spoiler_confidence': comment_model.spoiler_confidence,
+                'created_at': comment_model.created_at,
+                'updated_at': comment_model.updated_at,
+                'likes_count': likes_count,
+                'is_liked': is_liked
+            }
             
             return Comment(**comment_dict)
             
