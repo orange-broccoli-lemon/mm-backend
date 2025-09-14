@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # 애플리케이션 설정
     app_name: str = Field(default="TMDB Movie API", description="애플리케이션 이름")
     debug: bool = Field(default=False, description="디버그 모드")
+
+    # JWT 인증 설정
+    secret_key: str = Field(default="secret-jwt-key", description="JWT 토큰 암호화 키")
     
     # TMDB API 설정
     tmdb_api_key: str = Field(description="TMDB API Key")
