@@ -6,4 +6,5 @@ __all__ = [
     "MovieModel",
     "UserModel",
     "GenreModel",
+    "PersonModel",
 ]
