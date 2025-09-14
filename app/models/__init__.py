@@ -9,4 +9,5 @@ __all__ = [
     "PersonModel",
     "UserFollowModel",
     "MovieGenreModel",
+    "UserMovieModel",
 ]
