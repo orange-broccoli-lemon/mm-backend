@@ -7,4 +7,5 @@ __all__ = [
     "UserModel",
     "GenreModel",
     "PersonModel",
+    "UserFollowModel",
 ]
