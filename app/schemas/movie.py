@@ -1,9 +1,11 @@
+# app/schemas/movie.py
+
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import date
 
 class Movie(BaseModel):
-    """영화 정보 모델 (movies 테이블 구조 기반)"""
+    """영화 정보 모델"""
     tmdb_id: int = Field(description="TMDB 영화 ID")
     title: str = Field(description="영화 제목 (한국어)")
     original_title: str = Field(description="원제")
