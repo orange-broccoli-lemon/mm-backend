@@ -8,8 +8,9 @@ class UserModel(Base):
     __tablename__ = "users"
     
     user_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    google_id = Column(String(255), unique=True, nullable=False)
+    google_id = Column(String(255), unique=True, nullable=True)
     email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)
     name = Column(String(100), nullable=False)
     profile_image_url = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp())
