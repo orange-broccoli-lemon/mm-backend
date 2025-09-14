@@ -1,6 +1,6 @@
 # app/services/movie_service.py
 
-from typing import Optional
+from typing import List, Optional
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -94,3 +94,15 @@ class MovieService:
     def __del__(self):
         if hasattr(self, 'db'):
             self.db.close()
+
+    async def get_all_movies(self, skip: int = 0, limit: int = 100) -> List[Movie]:
+        """DB에 저장된 모든 영화 목록 조회"""
+        try:
+            stmt = select(MovieModel).offset(skip).limit(limit).order_by(MovieModel.created_at.desc())
+            result = self.db.execute(stmt)
+            movies = result.scalars().all()
+            
+            return [Movie.from_orm(movie) for movie in movies]
+            
+        except Exception as e:
+            raise Exception(f"영화 목록 조회 실패: {str(e)}")

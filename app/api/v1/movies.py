@@ -67,3 +67,20 @@ async def get_movie_details(
             status_code=500,
             detail=f"영화 상세 정보를 불러오는데 실패했습니다: {str(e)}"
         )
+
+@router.get(
+    "/",
+    response_model=List[Movie],
+    summary="DB 영화 목록",
+    description="데이터베이스에 저장된 모든 영화 목록을 조회합니다."
+)
+async def get_all_movies(
+    skip: int = Query(default=0, ge=0, description="건너뛸 영화 수"),
+    limit: int = Query(default=50, ge=1, le=100, description="가져올 영화 수"),
+    movie_service: MovieService = Depends(get_movie_service)
+):
+    try:
+        movies = await movie_service.get_all_movies(skip, limit)
+        return movies
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
