@@ -10,5 +10,6 @@ __all__ = [
     "UserFollowModel",
     "MovieGenreModel",
     "UserMovieModel",
-    "CommentModel"
+    "CommentModel",
+    "CommentLikeModel"
 ]
