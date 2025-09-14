@@ -9,6 +9,8 @@ from app.database import engine, Base
 # 설정 로드
 settings = get_settings()
 
+# 데이터베이스 테이블 초기화
+# Base.metadata.drop_all(bind=engine)
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
 

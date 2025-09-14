@@ -29,7 +29,7 @@ class TMDBService:
     
     def _format_movie_to_erd(self, movie_data: dict) -> Movie:
         return Movie(
-            tmdb_id=movie_data.get("id"),
+            movie_id=movie_data.get("id"),
             title=movie_data.get("title", ""),
             original_title=movie_data.get("original_title"),
             overview=movie_data.get("overview"),
@@ -83,11 +83,11 @@ class TMDBService:
             except httpx.RequestError as e:
                 raise Exception(f"요청 실패: {str(e)}")
     
-    async def get_movie_details(self, tmdb_id: int, language: str = None) -> dict:
+    async def get_movie_details(self, movie_id: int, language: str = None) -> dict:
         if language is None:
             language = self.default_language
             
-        url = f"{self.settings.tmdb_base_url}/movie/{tmdb_id}"
+        url = f"{self.settings.tmdb_base_url}/movie/{movie_id}"
         
         params = {
             "language": language,
@@ -108,7 +108,7 @@ class TMDBService:
                 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
-                    raise Exception(f"영화를 찾을 수 없습니다 (ID: {tmdb_id})")
+                    raise Exception(f"영화를 찾을 수 없습니다 (ID: {movie_id})")
                 raise Exception(f"TMDB API 오류: {e.response.status_code}")
             except httpx.RequestError as e:
                 raise Exception(f"요청 실패: {str(e)}")

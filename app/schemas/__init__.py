@@ -7,7 +7,7 @@ from .user import (
 )
 from .person import Person
 from .user_movie import UserMovie, WatchStatus
-from .comment import Comment
+from .comment import Comment, CommentCreate, CommentUpdate
 from .movie_cast import MovieCast, CastRole
 from .search import MovieSearchResult, PersonSearchResult, SearchResult, SearchResponse
 from .genre import Genre, GenreListResponse
@@ -32,5 +32,7 @@ __all__ = [
     "SearchResult", 
     "SearchResponse",
     "Genre",
-    "GenreListResponse"
+    "GenreListResponse",
+    "CommentCreate",
+    "CommentUpdate"
 ]
