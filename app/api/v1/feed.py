@@ -4,7 +4,9 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.schemas.feed import FeedResponse, FeedFilter
 from app.schemas.user import User
+from app.schemas.person import PersonFeedResponse
 from app.services.feed_service import FeedService
+from app.services.person_service import PersonService
 from app.core.dependencies import get_current_user
 
 router = APIRouter()
@@ -101,6 +103,31 @@ async def get_movie_feed(
             skip,
             limit,
             feed_filter
+        )
+        return feed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_person_service() -> PersonService:
+    return PersonService()
+
+@router.get(
+    "/persons",
+    response_model=PersonFeedResponse,
+    summary="팔로우한 인물 피드",
+    description="팔로우한 인물들의 새로운 작품 활동을 조회합니다."
+)
+async def get_followed_persons_feed(
+    skip: int = Query(default=0, ge=0, description="건너뛸 아이템 수"),
+    limit: int = Query(default=20, ge=1, le=50, description="가져올 아이템 수"),
+    current_user: User = Depends(get_current_user),
+    person_service: PersonService = Depends(get_person_service)
+):
+    try:
+        feed = await person_service.get_followed_persons_feed(
+            current_user.user_id,
+            skip,
+            limit
         )
         return feed
     except Exception as e:
