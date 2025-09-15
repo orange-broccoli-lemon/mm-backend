@@ -531,6 +531,21 @@ class PersonService:
             return None
         return f"https://image.tmdb.org/t/p/w500{path}"
     
+    async def get_all_persons(self) -> list[Person]:
+        """DB 전체 인물 조회"""
+        try:
+            stmt = select(PersonModel)
+            result = self.db.execute(stmt)
+            persons = []
+            
+            for person_model in result.scalars():
+                persons.append(Person.from_orm(person_model))
+            
+            return persons
+            
+        except Exception as e:
+            raise Exception(f"전체 인물 조회 실패: {str(e)}")
+    
     def __del__(self):
         if hasattr(self, 'db'):
             self.db.close()
