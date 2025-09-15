@@ -5,7 +5,7 @@ from .user import (
     User, UserCreateEmail, UserCreateGoogle, 
     UserLoginEmail, UserLoginGoogle, EmailCheck, TokenResponse
 )
-from .person import Person
+from .person import Person, PersonFollow, PersonFollowRequest, PersonStats, PersonCreditsResponse, PersonFeedResponse
 from .user_movie import UserMovie, WatchStatus
 from .comment import Comment, CommentCreate, CommentUpdate
 from .movie_cast import MovieCast, CastRole
@@ -34,5 +34,10 @@ __all__ = [
     "Genre",
     "GenreListResponse",
     "CommentCreate",
-    "CommentUpdate"
+    "CommentUpdate",
+    "PersonFollow",
+    "PersonFollowRequest",
+    "PersonStats",
+    "PersonCreditsResponse",
+    "PersonFeedResponse",
 ]
