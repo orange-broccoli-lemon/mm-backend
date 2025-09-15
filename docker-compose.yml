@@ -10,3 +10,6 @@ services:
     env_file:
       - /var/lib/jenkins/workspace/Back_end_Pipeline/.env
     restart: unless-stopped
+    volumes:
+      - /srv/huggingface_models/ko-en:/app/huggingface_models/ko-en
+      - /srv/huggingface_models/zero-shot:/app/huggingface_models/zero-shot
