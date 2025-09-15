@@ -7,9 +7,10 @@ from app.database import Base
 class GenreModel(Base):
     __tablename__ = "genres"
     
-    genre_id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)
+    genre_id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=func.current_timestamp())
+    updated_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
     
     def __repr__(self):
         return f"<GenreModel(id={self.genre_id}, name='{self.name}')>"
