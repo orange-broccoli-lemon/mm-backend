@@ -2,15 +2,15 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
 from .deps import check_spiler_ko
+
 # 설정 로드
 settings = get_settings()
 
-# 데이터베이스 테이블 초기화
-# Base.metadata.drop_all(bind=engine)
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
 
@@ -21,7 +21,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.openapi_version = "3.0.2"
+# OpenAPI 스키마 생성
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="mM",
+        version="1.0.0",
+        openapi_version="3.0.2",
+        description="Movie Community Service",
+        routes=app.routes,
+    )
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # CORS 미들웨어
 app.add_middleware(
