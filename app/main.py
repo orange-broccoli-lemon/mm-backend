@@ -65,3 +65,7 @@ def read_root():
         "version": "1.0.0",
         "docs": "/docs"
     }
+
+@app.get("/test/{text}")
+def read_root(text: str):
+    return check_spiler_ko(text)
