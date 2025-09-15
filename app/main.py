@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # API v1 라우터 등록
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/v1")
 
 @app.get("/")
 def read_root():
