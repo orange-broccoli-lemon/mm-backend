@@ -84,3 +84,18 @@ async def get_all_movies(
         return movies
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(
+    "/{movie_id}/genres",
+    summary="영화 장르 조회",
+    description="특정 영화의 장르 목록을 조회합니다."
+)
+async def get_movie_genres(
+    movie_id: int = Path(description="영화 ID"),
+    movie_service: MovieService = Depends(get_movie_service)
+):
+    try:
+        genres = await movie_service.get_movie_genres(movie_id)
+        return {"movie_id": movie_id, "genres": genres}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

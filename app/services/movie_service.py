@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from sqlalchemy.exc import ProgrammingError
 from app.models.movie import MovieModel
+from app.models.genre import GenreModel
+from app.models.movie_genre import MovieGenreModel
 from app.schemas import Movie
 from app.database import get_db
 
@@ -41,6 +43,8 @@ class MovieService:
             existing_movie = await self.get_movie_by_movie_id(movie_id)
             if existing_movie:
                 print("이미 DB에 존재함")
+                # 기존 영화도 장르 연결 확인/추가
+                await self._save_movie_genres(movie_id, tmdb_data.get("genres", []))
                 return existing_movie
             
             movie_model = MovieModel(
@@ -61,13 +65,98 @@ class MovieService:
             self.db.commit()
             self.db.refresh(movie_model)
             
-            print(f"DB 저장 완료: {movie_model.movie_id}")
+            # 장르 정보 저장
+            await self._save_movie_genres(movie_id, tmdb_data.get("genres", []))
+            
+            print(f"DB 저장 완료: {movie_model.movie_id} (장르 포함)")
             return Movie.from_orm(movie_model)
             
         except Exception as e:
             self.db.rollback()
             print(f"DB 저장 실패: {str(e)}")
             raise Exception(f"데이터베이스 저장 실패: {str(e)}")
+    
+    async def _save_movie_genres(self, movie_id: int, genres: List[dict]):
+        """영화의 장르 정보를 저장"""
+        try:
+            for genre_data in genres:
+                genre_id = genre_data.get("id")
+                genre_name = genre_data.get("name")
+                
+                if not genre_id or not genre_name:
+                    continue
+                
+                # 장르가 DB에 없으면 생성
+                await self._ensure_genre_exists(genre_id, genre_name)
+                
+                # 영화-장르 연결이 없으면 생성
+                await self._ensure_movie_genre_connection(movie_id, genre_id)
+                
+        except Exception as e:
+            print(f"장르 저장 실패: {str(e)}")
+            # 장르 저장 실패는 영화 저장을 막지 않음
+    
+    async def _ensure_genre_exists(self, genre_id: int, genre_name: str):
+        """장르가 DB에 존재하는지 확인하고 없으면 생성"""
+        try:
+            stmt = select(GenreModel).where(GenreModel.genre_id == genre_id)
+            result = self.db.execute(stmt)
+            existing_genre = result.scalar_one_or_none()
+            
+            if not existing_genre:
+                new_genre = GenreModel(
+                    genre_id=genre_id,
+                    name=genre_name
+                )
+                self.db.add(new_genre)
+                self.db.commit()
+                print(f"새 장르 생성: {genre_name} (ID: {genre_id})")
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"장르 생성 실패: {str(e)}")
+    
+    async def _ensure_movie_genre_connection(self, movie_id: int, genre_id: int):
+        """영화-장르 연결이 존재하는지 확인하고 없으면 생성"""
+        try:
+            stmt = select(MovieGenreModel).where(
+                MovieGenreModel.movie_id == movie_id,
+                MovieGenreModel.genre_id == genre_id
+            )
+            result = self.db.execute(stmt)
+            existing_connection = result.scalar_one_or_none()
+            
+            if not existing_connection:
+                new_connection = MovieGenreModel(
+                    movie_id=movie_id,
+                    genre_id=genre_id
+                )
+                self.db.add(new_connection)
+                self.db.commit()
+                print(f"영화-장르 연결 생성: 영화({movie_id}) - 장르({genre_id})")
+            
+        except Exception as e:
+            self.db.rollback()
+            print(f"영화-장르 연결 실패: {str(e)}")
+    
+    async def get_movie_genres(self, movie_id: int) -> List[dict]:
+        """영화의 장르 목록 조회"""
+        try:
+            stmt = select(GenreModel).join(
+                MovieGenreModel, GenreModel.genre_id == MovieGenreModel.genre_id
+            ).where(MovieGenreModel.movie_id == movie_id)
+            
+            result = self.db.execute(stmt)
+            genres = result.scalars().all()
+            
+            return [
+                {"id": genre.genre_id, "name": genre.name}
+                for genre in genres
+            ]
+            
+        except Exception as e:
+            print(f"영화 장르 조회 실패: {str(e)}")
+            return []
     
     async def get_all_movies(self, skip: int = 0, limit: int = 100) -> List[Movie]:
         try:
