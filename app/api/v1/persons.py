@@ -9,6 +9,8 @@ from app.schemas.person import (
 from app.schemas.user import User
 from app.services.person_service import PersonService
 from app.core.dependencies import get_current_user, get_optional_current_user
+from app.database import get_db
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -101,3 +103,18 @@ async def search_persons(
         return persons
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/", response_model=list[Person])
+async def get_all_persons(db: Session = Depends(get_db)):
+    """DB 전체 인물 조회"""
+    person_service = PersonService()
+    
+    try:
+        persons = await person_service.get_all_persons()
+        return persons
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
