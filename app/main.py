@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-
+from .deps import check_spiler_ko
 # 설정 로드
 settings = get_settings()
 

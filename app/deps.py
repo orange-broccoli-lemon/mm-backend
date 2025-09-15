@@ -23,11 +23,13 @@ def ko_to_en(text):
 def spoiler_detect_zero_shot(text):
     candidate_labels = ["spoiler", "not spoiler"]
     result = classifier(text, candidate_labels)
-    return result['labels'][0]
+    if (result['labels'][0] == "spoiler"):
+        return { "is_spoiler" : 1, "spoiler_score" : result['scores'][0]}
+    
+    return { "is_spoiler" : 0, "spoiler_score" : result['scores'][1]}
 
 
 def check_spiler_ko(text_ko):
     eng_text = ko_to_en(text_ko)
-    print(f"Translated: {eng_text}")
     result_label = spoiler_detect_zero_shot(eng_text)
     return result_label
