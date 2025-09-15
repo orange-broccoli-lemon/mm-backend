@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-
+from .deps import check_spiler_ko
 # 설정 로드
 settings = get_settings()
 
@@ -41,4 +41,11 @@ def read_root():
         "description": "Movie Community Service",
         "version": "1.0.0",
         "docs": "/docs"
+    }
+
+@app.get("/test")
+def read_root():
+
+    return {
+        "result" : check_spiler_ko("안녕하세요. 제 이름은 anna 입니다.")
     }
