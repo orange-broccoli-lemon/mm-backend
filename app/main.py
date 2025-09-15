@@ -15,13 +15,18 @@ settings = get_settings()
 Base.metadata.create_all(bind=engine)
 
 # FastAPI 앱 생성
+# 프록시 경로에 맞춰 FastAPI 앱 생성
 app = FastAPI(
     title="mM",
     description="Movie Community Service", 
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+    root_path="/api",
+    servers=[{"url": "/api"}]
 )
 
-# OpenAPI 스키마 생성
+# OpenAPI 스키마
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -32,6 +37,7 @@ def custom_openapi():
         openapi_version="3.0.2",
         description="Movie Community Service",
         routes=app.routes,
+        servers=[{"url": "/api"}]
     )
     app.openapi_schema = openapi_schema
     return app.openapi_schema
