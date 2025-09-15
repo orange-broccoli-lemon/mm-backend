@@ -42,10 +42,3 @@ def read_root():
         "version": "1.0.0",
         "docs": "/docs"
     }
-
-@app.get("/test")
-def read_root():
-
-    return {
-        "result" : check_spiler_ko("안녕하세요. 제 이름은 anna 입니다.")
-    }
