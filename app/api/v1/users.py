@@ -53,3 +53,18 @@ async def get_my_profile(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+@router.get("/dev/all", response_model=list[User])
+async def get_all_users(db: Session = Depends(get_db)):
+    """DB 전체 사용자 조회"""
+    user_service = UserService()
+    
+    try:
+        users = await user_service.get_all_users()
+        return users
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

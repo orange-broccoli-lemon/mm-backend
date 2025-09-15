@@ -418,6 +418,22 @@ class UserService:
 
         except Exception as e:
             return []
+        
+    async def get_all_users(self) -> list[User]:
+        """DB 전체 사용자 조회"""
+        try:
+            stmt = select(UserModel)
+            result = self.db.execute(stmt)
+            users = []
+            
+            for user_model in result.scalars():
+                users.append(User.from_orm(user_model))
+            
+            return users
+            
+        except Exception as e:
+            raise Exception(f"전체 사용자 조회 실패: {str(e)}")
+
 
     def __del__(self):
         if hasattr(self, 'db'):
