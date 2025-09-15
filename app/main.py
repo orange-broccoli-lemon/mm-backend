@@ -21,6 +21,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.openapi_version = "3.0.2"
+
 # CORS 미들웨어
 app.add_middleware(
     CORSMiddleware,

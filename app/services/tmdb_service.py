@@ -91,7 +91,7 @@ class TMDBService:
         
         params = {
             "language": language,
-            "append_to_response": "videos"
+            "append_to_response": "videos,credits,genres"
         }
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -168,3 +168,106 @@ class TMDBService:
                 raise Exception(f"TMDB API 오류: {e.response.status_code}")
             except httpx.RequestError as e:
                 raise Exception(f"요청 실패: {str(e)}")
+
+    async def get_person_details(self, person_id: int, language: str = "ko-KR") -> Optional[dict]:
+        """TMDB에서 인물 상세 정보 조회"""
+        url = f"{self.settings.tmdb_base_url}/person/{person_id}"
+        params = {
+            "language": language,
+            "append_to_response": "movie_credits"
+        }
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self.settings.tmdb_headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data
+                
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    print(f"TMDB에서 인물을 찾을 수 없음 (ID: {person_id})")
+                    return None
+                print(f"TMDB 인물 상세 조회 실패: {e.response.status_code}")
+                return None
+            except httpx.RequestError as e:
+                print(f"TMDB 인물 상세 조회 요청 실패: {str(e)}")
+                return None
+
+    async def get_person_movie_credits(self, person_id: int, language: str = "ko-KR") -> Optional[dict]:
+        """TMDB에서 인물의 영화 출연작 조회"""
+        url = f"{self.settings.tmdb_base_url}/person/{person_id}/movie_credits"
+        params = {"language": language}
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self.settings.tmdb_headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data
+                
+            except httpx.HTTPStatusError as e:
+                print(f"TMDB 인물 출연작 조회 실패: {e.response.status_code}")
+                return None
+            except httpx.RequestError as e:
+                print(f"TMDB 인물 출연작 조회 요청 실패: {str(e)}")
+                return None
+
+    async def search_person(self, query: str, language: str = "ko-KR", page: int = 1) -> Optional[dict]:
+        """TMDB에서 인물 검색"""
+        url = f"{self.settings.tmdb_base_url}/search/person"
+        params = {
+            "query": query,
+            "language": language,
+            "page": page,
+            "include_adult": "false"
+        }
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self.settings.tmdb_headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data
+                
+            except httpx.HTTPStatusError as e:
+                print(f"TMDB 인물 검색 실패: {e.response.status_code}")
+                return None
+            except httpx.RequestError as e:
+                print(f"TMDB 인물 검색 요청 실패: {str(e)}")
+                return None
+
+    async def get_movie_genres(self, language: str = "ko-KR") -> Optional[dict]:
+        """TMDB에서 영화 장르 목록 조회"""
+        url = f"{self.settings.tmdb_base_url}/genre/movie/list"
+        params = {"language": language}
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=self.settings.tmdb_headers
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data
+                
+            except httpx.HTTPStatusError as e:
+                print(f"TMDB 장르 목록 조회 실패: {e.response.status_code}")
+                return None
+            except httpx.RequestError as e:
+                print(f"TMDB 장르 목록 조회 요청 실패: {str(e)}")
+                return None

@@ -1,15 +1,14 @@
 # app/models/person_follow.py
 
-from sqlalchemy import Column, BigInteger, DateTime, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, BigInteger, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
 from app.database import Base
 
 class PersonFollowModel(Base):
     __tablename__ = "person_follows"
     
-    follow_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    person_id = Column(BigInteger, ForeignKey('person.person_id'), nullable=False)
-    user_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=False)
+    user_id = Column(BigInteger, ForeignKey('users.user_id'), primary_key=True)
+    person_id = Column(Integer, ForeignKey('persons.person_id'), primary_key=True)
     created_at = Column(DateTime, default=func.current_timestamp())
     
     __table_args__ = (
