@@ -91,7 +91,7 @@ class UserFollowingPerson(BaseModel):
         from_attributes = True
 
 class UserDetail(BaseModel):
-    """사용자 상세 정보 - 모든 관련 데이터 포함"""
+    """사용자 상세 정보"""
     # 기본 사용자 정보
     user_id: int = Field(description="사용자 ID")
     email: Optional[str] = Field(default=None, description="이메일 (본인만 조회 가능)")
@@ -101,21 +101,13 @@ class UserDetail(BaseModel):
     last_login: Optional[datetime] = Field(default=None, description="마지막 로그인 (본인만 조회 가능)")
     is_active: bool = Field(description="활성 상태")
 
-    # 통계 정보
+    # 통계
     followers_count: int = Field(default=0, description="팔로워 수")
     following_count: int = Field(default=0, description="팔로잉 수")
     following_persons_count: int = Field(default=0, description="팔로우 중인 인물 수")
     comments_count: int = Field(default=0, description="작성한 코멘트 수")
     liked_movies_count: int = Field(default=0, description="좋아요한 영화 수")
     watchlist_count: int = Field(default=0, description="왓치리스트 영화 수")
-
-    # 목록 정보
-    followers: list[UserFollower] = Field(default=[], description="팔로워 목록")
-    following: list[UserFollowing] = Field(default=[], description="팔로잉 목록")
-    following_persons: list[UserFollowingPerson] = Field(default=[], description="팔로우 중인 인물 목록")
-    recent_comments: list[UserComment] = Field(default=[], description="최근 코멘트 목록")
-    liked_movies: list[WatchlistMovie] = Field(default=[], description="좋아요한 영화 목록")
-    watchlist_movies: list[WatchlistMovie] = Field(default=[], description="왓치리스트 영화 목록")
 
     class Config:
         from_attributes = True

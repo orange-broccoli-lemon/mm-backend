@@ -28,7 +28,6 @@ class UserService:
     def __init__(self):
         self.db: Session = next(get_db())
     
-    # 기본 인증 관련 메서드들 - 변경 없음
     async def get_user_by_email(self, email: str) -> Optional[User]:
         try:
             stmt = select(UserModel).where(UserModel.email == email)
@@ -159,7 +158,7 @@ class UserService:
     
     # 사용자 상세 정보
     async def get_user_detail(self, user_id: int, current_user: Optional[User] = None) -> Optional[UserDetail]:
-        """사용자 상세 정보 조회"""
+        """사용자 상세 정보 조회 - 통계만 포함"""
         try:
             print(f"사용자 상세 조회: {user_id}")
             
@@ -189,48 +188,16 @@ class UserService:
                     "last_login": user_model.last_login,
                 })
             
-            # 4. 모든 관련 데이터를 병렬로 조회
-            import asyncio
-            
-            tasks = [
-                # 통계 데이터
-                self._get_counts(user_id),
-                # 목록 데이터 (각 10개씩)
-                self._get_followers_list(user_id, 10),
-                self._get_following_list(user_id, 10),
-                self._get_following_persons_list(user_id, 10),
-                self._get_recent_comments(user_id, 10),
-                self._get_liked_movies(user_id, 10),
-                self._get_watchlist_movies(user_id, 10)
-            ]
-            
-            # 병렬 실행
-            (
-                counts,
-                followers_list,
-                following_list,
-                following_persons_list,
-                comments_list,
-                liked_movies_list,
-                watchlist_movies_list
-            ) = await asyncio.gather(*tasks)
-            
-            # 5. 최종 데이터 구성
-            user_data.update({
-                **counts,  # 통계 정보 병합
-                "followers": followers_list,
-                "following": following_list,
-                "following_persons": following_persons_list,
-                "recent_comments": comments_list,
-                "liked_movies": liked_movies_list,
-                "watchlist_movies": watchlist_movies_list
-            })
+            # 4. 통계 정보만 조회
+            counts = await self._get_counts(user_id)
+            user_data.update(counts)
             
             return UserDetail(**user_data)
             
         except Exception as e:
             print(f"사용자 상세 조회 실패: {str(e)}")
             raise Exception(f"사용자 상세 정보 조회 실패: {str(e)}")
+
     
     async def get_user_comments_with_movies(
         self, 
