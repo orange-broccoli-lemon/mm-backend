@@ -11,6 +11,8 @@ from app.schemas.movie import WatchlistMovie
 from app.services.movie_service import MovieService
 from app.services.comment_service import CommentService
 from app.schemas.comment import CommentWithMovie
+from app.services.user_follow_service import UserFollowService
+from app.schemas.user_follow import UserFollow, FollowListResponse
 
 router = APIRouter()
 
@@ -197,6 +199,152 @@ async def get_all_users(db: Session = Depends(get_db)):
     try:
         users = await user_service.get_all_users()
         return users
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    
+@router.post(
+    "/{user_id}/follow",
+    response_model=UserFollow,
+    summary="사용자 팔로우",
+    description="특정 사용자를 팔로우합니다."
+)
+async def follow_user(
+    user_id: int = Path(description="팔로우할 사용자 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """사용자 팔로우"""
+    follow_service = UserFollowService()
+    
+    try:
+        follow = await follow_service.follow_user(current_user.user_id, user_id)
+        return follow
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.delete(
+    "/{user_id}/follow",
+    summary="사용자 언팔로우",
+    description="팔로우 중인 사용자를 언팔로우합니다."
+)
+async def unfollow_user(
+    user_id: int = Path(description="언팔로우할 사용자 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """사용자 언팔로우"""
+    follow_service = UserFollowService()
+    
+    try:
+        success = await follow_service.unfollow_user(current_user.user_id, user_id)
+        return {"message": "언팔로우가 완료되었습니다", "success": success}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.get(
+    "/{user_id}/followers",
+    response_model=FollowListResponse,
+    summary="팔로워 목록",
+    description="특정 사용자의 팔로워 목록을 조회합니다."
+)
+async def get_user_followers(
+    user_id: int = Path(description="사용자 ID"),
+    limit: int = Query(default=20, ge=1, le=100, description="가져올 사용자 수"),
+    offset: int = Query(default=0, ge=0, description="건너뛸 사용자 수"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """사용자 팔로워 목록 조회"""
+    follow_service = UserFollowService()
+    user_service = UserService()
+    
+    try:
+        # 사용자 존재 확인
+        target_user = await user_service.get_user_by_id(user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="사용자를 찾을 수 없습니다"
+            )
+        
+        current_user_id = current_user.user_id if current_user else None
+        followers = await follow_service.get_followers(user_id, current_user_id, offset, limit)
+        return followers
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get(
+    "/{user_id}/following",
+    response_model=FollowListResponse,
+    summary="팔로잉 목록",
+    description="특정 사용자가 팔로우하는 사람들의 목록을 조회합니다."
+)
+async def get_user_following(
+    user_id: int = Path(description="사용자 ID"),
+    limit: int = Query(default=20, ge=1, le=100, description="가져올 사용자 수"),
+    offset: int = Query(default=0, ge=0, description="건너뛸 사용자 수"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """사용자 팔로잉 목록 조회"""
+    follow_service = UserFollowService()
+    user_service = UserService()
+    
+    try:
+        # 사용자 존재 확인
+        target_user = await user_service.get_user_by_id(user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="사용자를 찾을 수 없습니다"
+            )
+        
+        current_user_id = current_user.user_id if current_user else None
+        following = await follow_service.get_following(user_id, current_user_id, offset, limit)
+        return following
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get(
+    "/{user_id}/follow/check",
+    summary="팔로우 관계 확인",
+    description="현재 사용자가 특정 사용자를 팔로우하는지 확인합니다."
+)
+async def check_follow_relationship(
+    user_id: int = Path(description="확인할 사용자 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """팔로우 관계 확인"""
+    follow_service = UserFollowService()
+    
+    try:
+        is_following = await follow_service.is_following(current_user.user_id, user_id)
+        return {"is_following": is_following}
         
     except Exception as e:
         raise HTTPException(
