@@ -6,7 +6,7 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-from .deps import check_spiler_ko
+# from .deps import check_spiler_ko
 
 # 설정 로드
 settings = get_settings()
@@ -44,10 +44,15 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://i13m105.p.ssafy.io"
+]
+
 # CORS 미들웨어
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
