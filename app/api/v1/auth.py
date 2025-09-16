@@ -69,38 +69,6 @@ async def login_email(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이메일 로그인 실패: {str(e)}")
 
-# 구글 로그인
-@router.post(
-    "/login/google",
-    response_model=TokenResponse,
-    summary="구글 로그인",
-    description="Google 계정으로 로그인합니다."
-)
-async def login_google(
-    login_data: UserLoginGoogle,
-    user_service: UserService = Depends(get_user_service)
-):
-    try:
-        user = await user_service.authenticate_user_google(
-            email=login_data.email,
-            google_id=login_data.google_id
-        )
-        
-        if not user:
-            raise HTTPException(status_code=401, detail="잘못된 Google 로그인 정보입니다")
-        
-        access_token = create_access_token(data={"sub": user.email})
-        
-        return TokenResponse(
-            access_token=access_token,
-            user=user
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Google 로그인 실패: {str(e)}")
-
 # 이메일 중복 체크
 @router.post(
     "/check-email",
