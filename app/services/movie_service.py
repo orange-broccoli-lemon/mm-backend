@@ -13,6 +13,9 @@ from app.models.person import PersonModel
 from app.schemas import Movie
 from app.services.tmdb_service import TMDBService
 from app.database import get_db
+from app.models.movie_like import MovieLikeModel
+from app.models.watchlist import WatchlistModel
+from app.schemas.movie import MovieLike, Watchlist, WatchlistMovie, MovieWithUserActions
 
 class MovieService:
     
@@ -436,6 +439,256 @@ class MovieService:
             if video.get("type") == "Trailer" and video.get("site") == "YouTube":
                 return f"https://www.youtube.com/watch?v={video.get('key')}"
         return None
+    
+    async def like_movie(self, user_id: int, movie_id: int) -> MovieLike:
+        """영화 좋아요"""
+        try:
+            # 영화 존재 확인
+            movie = await self._get_movie_from_db_only(movie_id)
+            if not movie:
+                raise Exception("존재하지 않는 영화입니다")
+            
+            # 이미 좋아요 했는지 확인
+            if await self._is_movie_liked(user_id, movie_id):
+                raise Exception("이미 좋아요한 영화입니다")
+            
+            # 좋아요 생성
+            new_like = MovieLikeModel(
+                user_id=user_id,
+                movie_id=movie_id
+            )
+            
+            self.db.add(new_like)
+            self.db.commit()
+            self.db.refresh(new_like)
+            
+            return MovieLike(
+                user_id=new_like.user_id,
+                movie_id=new_like.movie_id,
+                created_at=new_like.created_at
+            )
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"영화 좋아요 실패: {str(e)}")
+    
+    async def unlike_movie(self, user_id: int, movie_id: int) -> bool:
+        """영화 좋아요 취소"""
+        try:
+            stmt = select(MovieLikeModel).where(
+                and_(
+                    MovieLikeModel.user_id == user_id,
+                    MovieLikeModel.movie_id == movie_id
+                )
+            )
+            result = self.db.execute(stmt)
+            like = result.scalar_one_or_none()
+            
+            if not like:
+                raise Exception("좋아요 기록을 찾을 수 없습니다")
+            
+            self.db.delete(like)
+            self.db.commit()
+            
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"좋아요 취소 실패: {str(e)}")
+    
+    async def add_to_watchlist(self, user_id: int, movie_id: int) -> Watchlist:
+        """왓치리스트에 영화 추가"""
+        try:
+            # 영화 존재 확인
+            movie = await self._get_movie_from_db_only(movie_id)
+            if not movie:
+                raise Exception("존재하지 않는 영화입니다")
+            
+            # 이미 왓치리스트에 있는지 확인
+            if await self._is_in_watchlist(user_id, movie_id):
+                raise Exception("이미 왓치리스트에 있는 영화입니다")
+            
+            # 왓치리스트 추가
+            new_watchlist = WatchlistModel(
+                user_id=user_id,
+                movie_id=movie_id
+            )
+            
+            self.db.add(new_watchlist)
+            self.db.commit()
+            self.db.refresh(new_watchlist)
+            
+            return Watchlist(
+                user_id=new_watchlist.user_id,
+                movie_id=new_watchlist.movie_id,
+                created_at=new_watchlist.created_at
+            )
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"왓치리스트 추가 실패: {str(e)}")
+    
+    async def remove_from_watchlist(self, user_id: int, movie_id: int) -> bool:
+        """왓치리스트에서 영화 제거"""
+        try:
+            stmt = select(WatchlistModel).where(
+                and_(
+                    WatchlistModel.user_id == user_id,
+                    WatchlistModel.movie_id == movie_id
+                )
+            )
+            result = self.db.execute(stmt)
+            watchlist = result.scalar_one_or_none()
+            
+            if not watchlist:
+                raise Exception("왓치리스트에서 영화를 찾을 수 없습니다")
+            
+            self.db.delete(watchlist)
+            self.db.commit()
+            
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"왓치리스트 제거 실패: {str(e)}")
+    
+    async def get_user_watchlist(self, user_id: int, limit: int = 20, offset: int = 0) -> list[WatchlistMovie]:
+        """사용자 왓치리스트 조회"""
+        try:
+            stmt = select(
+                MovieModel.movie_id,
+                MovieModel.title,
+                MovieModel.poster_url,
+                MovieModel.release_date,
+                MovieModel.average_rating,
+                WatchlistModel.created_at
+            ).join(
+                WatchlistModel, MovieModel.movie_id == WatchlistModel.movie_id
+            ).where(
+                WatchlistModel.user_id == user_id
+            ).order_by(
+                WatchlistModel.created_at.desc()
+            ).limit(limit).offset(offset)
+            
+            result = self.db.execute(stmt)
+            watchlist_movies = []
+            
+            for row in result:
+                watchlist_movies.append(WatchlistMovie(
+                    movie_id=row.movie_id,
+                    title=row.title,
+                    poster_url=row.poster_url,
+                    release_date=row.release_date,
+                    average_rating=row.average_rating,
+                    added_at=row.created_at
+                ))
+            
+            return watchlist_movies
+            
+        except Exception as e:
+            raise Exception(f"왓치리스트 조회 실패: {str(e)}")
+    
+    async def get_user_liked_movies(self, user_id: int, limit: int = 20, offset: int = 0) -> list[WatchlistMovie]:
+        """사용자가 좋아요한 영화 목록"""
+        try:
+            stmt = select(
+                MovieModel.movie_id,
+                MovieModel.title,
+                MovieModel.poster_url,
+                MovieModel.release_date,
+                MovieModel.average_rating,
+                MovieLikeModel.created_at
+            ).join(
+                MovieLikeModel, MovieModel.movie_id == MovieLikeModel.movie_id
+            ).where(
+                MovieLikeModel.user_id == user_id
+            ).order_by(
+                MovieLikeModel.created_at.desc()
+            ).limit(limit).offset(offset)
+            
+            result = self.db.execute(stmt)
+            liked_movies = []
+            
+            for row in result:
+                liked_movies.append(WatchlistMovie(
+                    movie_id=row.movie_id,
+                    title=row.title,
+                    poster_url=row.poster_url,
+                    release_date=row.release_date,
+                    average_rating=row.average_rating,
+                    added_at=row.created_at
+                ))
+            
+            return liked_movies
+            
+        except Exception as e:
+            raise Exception(f"좋아요 영화 조회 실패: {str(e)}")
+    
+    async def get_movie_with_user_actions(self, movie_id: int, user_id: Optional[int] = None) -> Optional[dict]:
+        """사용자 액션 정보가 포함된 영화 상세 정보"""
+        try:
+            # 기본 영화 정보 조회
+            movie_dict = await self.get_movie_by_movie_id(movie_id)
+            if not movie_dict:
+                return None
+            
+            # 사용자 액션 정보 추가
+            if user_id:
+                is_liked = await self._is_movie_liked(user_id, movie_id)
+                is_in_watchlist = await self._is_in_watchlist(user_id, movie_id)
+                movie_dict["is_liked"] = is_liked
+                movie_dict["is_in_watchlist"] = is_in_watchlist
+            else:
+                movie_dict["is_liked"] = False
+                movie_dict["is_in_watchlist"] = False
+            
+            # 총 좋아요 수 추가
+            likes_count = await self._get_movie_likes_count(movie_id)
+            movie_dict["likes_count"] = likes_count
+            
+            return movie_dict
+            
+        except Exception as e:
+            raise Exception(f"영화 상세 정보 조회 실패: {str(e)}")
+    
+    async def _is_movie_liked(self, user_id: int, movie_id: int) -> bool:
+        """사용자가 영화를 좋아요했는지 확인"""
+        try:
+            stmt = select(MovieLikeModel).where(
+                and_(
+                    MovieLikeModel.user_id == user_id,
+                    MovieLikeModel.movie_id == movie_id
+                )
+            )
+            result = self.db.execute(stmt)
+            return result.scalar_one_or_none() is not None
+        except Exception:
+            return False
+    
+    async def _is_in_watchlist(self, user_id: int, movie_id: int) -> bool:
+        """영화가 왓치리스트에 있는지 확인"""
+        try:
+            stmt = select(WatchlistModel).where(
+                and_(
+                    WatchlistModel.user_id == user_id,
+                    WatchlistModel.movie_id == movie_id
+                )
+            )
+            result = self.db.execute(stmt)
+            return result.scalar_one_or_none() is not None
+        except Exception:
+            return False
+    
+    async def _get_movie_likes_count(self, movie_id: int) -> int:
+        """영화의 총 좋아요 수"""
+        try:
+            stmt = select(func.count(MovieLikeModel.user_id)).where(
+                MovieLikeModel.movie_id == movie_id
+            )
+            result = self.db.execute(stmt)
+            return result.scalar() or 0
+        except Exception:
+            return 0
     
     def __del__(self):
         if hasattr(self, 'db'):
