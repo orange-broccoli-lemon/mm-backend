@@ -7,6 +7,7 @@ from app.schemas.user import (
 )
 from app.services.user_service import UserService
 from app.core.auth import create_access_token
+from app.services.google_oauth_service import GoogleOAuthService
 
 router = APIRouter()
 
@@ -26,29 +27,6 @@ async def signup_email(
 ):
     try:
         user = await user_service.create_user_email(user_data)
-        access_token = create_access_token(data={"sub": user.email})
-        
-        return TokenResponse(
-            access_token=access_token,
-            user=user
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# 구글 회원가입
-@router.post(
-    "/signup/google",
-    response_model=TokenResponse,
-    summary="구글 회원가입",
-    description="Google 계정으로 회원가입합니다."
-)
-async def signup_google(
-    user_data: UserCreateGoogle,
-    user_service: UserService = Depends(get_user_service)
-):
-    try:
-        user = await user_service.create_user_google(user_data)
         access_token = create_access_token(data={"sub": user.email})
         
         return TokenResponse(
@@ -144,3 +122,49 @@ async def check_email(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이메일 확인 실패: {str(e)}")
+
+
+@router.get(
+    "/google/login",
+    summary="Google 로그인 URL 생성",
+    description="Google OAuth 로그인을 위한 URL을 생성합니다."
+)
+async def google_login():
+    google_service = GoogleOAuthService()
+    login_url = google_service.get_login_url()
+    return {"url": login_url}
+
+@router.get(
+    "/google/callback", 
+    response_model=TokenResponse,
+    summary="Google OAuth 콜백",
+    description="Google OAuth 인증 후 콜백을 처리합니다."
+)
+async def google_callback(
+    code: str,
+    user_service: UserService = Depends(get_user_service)
+):
+    google_service = GoogleOAuthService()
+    user_info = google_service.get_user_info_from_code(code)
+    
+    if not user_info:
+        raise HTTPException(status_code=400, detail="Google 인증 실패")
+    
+    # 기존 사용자 확인 또는 새 사용자 생성
+    user = await user_service.authenticate_user_google(
+        email=user_info["email"],
+        google_id=user_info["id"]
+    )
+    
+    if not user:
+        # 새 사용자 생성
+        user_data = UserCreateGoogle(
+            google_id=user_info["id"],
+            email=user_info["email"],
+            name=user_info["name"],
+            profile_image_url=user_info.get("picture")
+        )
+        user = await user_service.create_user_google(user_data)
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return TokenResponse(access_token=access_token, user=user)

@@ -4,6 +4,7 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     """설정 클래스"""
     
@@ -20,6 +21,16 @@ class Settings(BaseSettings):
 
     # JWT 인증 설정
     secret_key: str = Field(default="secret-jwt-key", description="JWT 토큰 암호화 키")
+    algorithm: str = Field(default="HS256", description="JWT 알고리즘")
+    access_token_expire_minutes: int = Field(default=30, description="JWT 토큰 만료 시간(분)")
+    
+    # Google OAuth 설정
+    google_client_id: str = Field(description="Google OAuth Client ID")
+    google_client_secret: str = Field(description="Google OAuth Client Secret")
+    google_redirect_uri: str = Field(
+        default="http://127.0.0.1:8000/api/v1/auth/google/callback", 
+        description="Google OAuth 리디렉트 URI"
+    )
     
     # TMDB API 설정
     tmdb_api_key: str = Field(description="TMDB API Key")
@@ -35,6 +46,7 @@ class Settings(BaseSettings):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.tmdb_access_token}"
         }
+
 
 @lru_cache()
 def get_settings() -> Settings:
