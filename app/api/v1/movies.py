@@ -58,7 +58,7 @@ async def get_movie_details(
 ):
     """영화 상세 정보 조회"""
     try:
-        movie_with_cast = await movie_service.get_movie_with_user_actions(movie_id)
+        movie_with_cast = await movie_service.get_movie_detail(movie_id)
         
         if movie_with_cast:
             return movie_with_cast
