@@ -1,6 +1,7 @@
 # app/api/v1/auth.py
 
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import RedirectResponse
 from app.schemas.user import (
     User, UserCreateEmail, UserCreateGoogle, 
     UserLoginEmail, UserLoginGoogle, EmailCheck, TokenResponse
@@ -103,8 +104,7 @@ async def google_login():
     return {"url": login_url}
 
 @router.get(
-    "/google/callback", 
-    response_model=TokenResponse,
+    "/google/callback",
     summary="Google OAuth 콜백",
     description="Google OAuth 인증 후 콜백을 처리합니다."
 )
@@ -114,18 +114,13 @@ async def google_callback(
 ):
     google_service = GoogleOAuthService()
     user_info = google_service.get_user_info_from_code(code)
-    
     if not user_info:
-        raise HTTPException(status_code=400, detail="Google 인증 실패")
-    
-    # 기존 사용자 확인 또는 새 사용자 생성
+        return RedirectResponse("http://localhost:5173/login", status_code=302)
+
     user = await user_service.authenticate_user_google(
-        email=user_info["email"],
-        google_id=user_info["id"]
+        email=user_info["email"], google_id=user_info["id"]
     )
-    
     if not user:
-        # 새 사용자 생성
         user_data = UserCreateGoogle(
             google_id=user_info["id"],
             email=user_info["email"],
@@ -133,6 +128,15 @@ async def google_callback(
             profile_image_url=user_info.get("picture")
         )
         user = await user_service.create_user_google(user_data)
-    
+
     access_token = create_access_token(data={"sub": user.email})
-    return TokenResponse(access_token=access_token, user=user)
+
+    resp = RedirectResponse("http://localhost:5173/auth/google/callback", status_code=302)
+    resp.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,
+        samesite="Lax"
+    )
+    return resp
