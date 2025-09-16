@@ -6,7 +6,7 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-# from .deps import check_spiler_ko
+from .deps import check_spiler_ko, check_emotion_ko, detect_toxicity
 
 # 설정 로드
 settings = get_settings()
@@ -71,6 +71,14 @@ def read_root():
         "docs": "/docs"
     }
 
-@app.get("/test/{text}")
+@app.get("/spoilertest/{text}")
 def read_root(text: str):
     return check_spiler_ko(text)
+
+@app.get("/emotiontest/{text}")
+def read_root(text: str):
+    return check_emotion_ko(text)
+
+@app.get("/toxictest/{text}")
+def read_root(text: str):
+    return detect_toxicity(text)
