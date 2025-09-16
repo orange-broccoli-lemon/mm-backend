@@ -110,8 +110,8 @@ async def get_movie_genres(
 
 @router.get(
     "/{movie_id}/cast",
-    summary="영화 출연진만 조회",
-    description="특정 영화의 출연진 정보만 조회합니다."
+    summary="영화 출연진 조회",
+    description="특정 영화의 출연진 정보를 조회합니다."
 )
 async def get_movie_cast_only(
     movie_id: int = Path(description="영화 ID"),
