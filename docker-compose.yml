@@ -13,3 +13,5 @@ services:
     volumes:
       - /srv/huggingface_models/ko-en:/app/huggingface_models/ko-en
       - /srv/huggingface_models/zero-shot:/app/huggingface_models/zero-shot
+      - /srv/huggingface_models/naver_review_model:/app/huggingface_models/naver_review_model
+      - /srv/huggingface_models/toxic_ko:/app/huggingface_models/toxic_ko
