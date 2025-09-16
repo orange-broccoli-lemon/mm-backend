@@ -18,6 +18,7 @@ from app.schemas.user import (
     UserFollower, UserFollowing, UserFollowingPerson
 )
 from app.schemas.movie import WatchlistMovie
+from app.schemas.comment import CommentWithMovie
 from app.database import get_db
 from app.core.auth import get_password_hash, verify_password
 
@@ -42,6 +43,18 @@ class UserService:
     async def get_user_by_google_id(self, google_id: str) -> Optional[User]:
         try:
             stmt = select(UserModel).where(UserModel.google_id == google_id)
+            result = self.db.execute(stmt)
+            user_model = result.scalar_one_or_none()
+            
+            return User.from_orm(user_model) if user_model else None
+            
+        except Exception as e:
+            raise Exception(f"사용자 조회 실패: {str(e)}")
+        
+    async def get_user_by_id(self, user_id: int) -> Optional[User]:
+        """ID로 사용자 기본 정보 조회"""
+        try:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
             result = self.db.execute(stmt)
             user_model = result.scalar_one_or_none()
             
@@ -218,6 +231,80 @@ class UserService:
         except Exception as e:
             print(f"사용자 상세 조회 실패: {str(e)}")
             raise Exception(f"사용자 상세 정보 조회 실패: {str(e)}")
+    
+    async def get_user_comments_with_movies(
+        self, 
+        user_id: int, 
+        limit: int = 20, 
+        offset: int = 0,
+        include_private: bool = False
+    ) -> list[CommentWithMovie]:
+        """사용자 댓글 목록 조회 (영화 정보 포함)"""
+        try:
+            stmt = select(
+                CommentModel.comment_id,
+                CommentModel.content,
+                CommentModel.rating,
+                CommentModel.watched_date,
+                CommentModel.is_spoiler,
+                CommentModel.is_public,
+                CommentModel.created_at,
+                CommentModel.movie_id,
+                MovieModel.title.label('movie_title'),
+                MovieModel.poster_url.label('movie_poster_url'),
+                MovieModel.release_date.label('movie_release_date'),
+                func.count(CommentLikeModel.comment_id).label('likes_count')
+            ).outerjoin(
+                MovieModel, CommentModel.movie_id == MovieModel.movie_id
+            ).outerjoin(
+                CommentLikeModel, CommentModel.comment_id == CommentLikeModel.comment_id
+            ).where(
+                CommentModel.user_id == user_id
+            )
+            
+            # 본인이 아닌 경우 공개 댓글만 조회
+            if not include_private:
+                stmt = stmt.where(CommentModel.is_public == True)
+            
+            stmt = stmt.group_by(
+                CommentModel.comment_id,
+                CommentModel.content,
+                CommentModel.rating,
+                CommentModel.watched_date,
+                CommentModel.is_spoiler,
+                CommentModel.is_public,
+                CommentModel.created_at,
+                CommentModel.movie_id,
+                MovieModel.title,
+                MovieModel.poster_url,
+                MovieModel.release_date
+            ).order_by(
+                CommentModel.created_at.desc()
+            ).limit(limit).offset(offset)
+            
+            result = self.db.execute(stmt)
+            comments = []
+            
+            for row in result:
+                comments.append(CommentWithMovie(
+                    comment_id=row.comment_id,
+                    content=row.content,
+                    rating=row.rating,
+                    watched_date=row.watched_date,
+                    is_spoiler=row.is_spoiler,
+                    is_public=row.is_public,
+                    likes_count=row.likes_count,
+                    created_at=row.created_at,
+                    movie_id=row.movie_id,
+                    movie_title=row.movie_title or f"영화 {row.movie_id}",
+                    movie_poster_url=row.movie_poster_url,
+                    movie_release_date=row.movie_release_date
+                ))
+            
+            return comments
+            
+        except Exception as e:
+            raise Exception(f"사용자 댓글 조회 실패: {str(e)}")
     
     async def _get_counts(self, user_id: int) -> dict:
         """모든 통계 정보를 한 번에 조회"""
