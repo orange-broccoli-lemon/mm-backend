@@ -10,7 +10,12 @@ from app.core.dependencies import get_current_user, get_optional_current_user
 
 router = APIRouter()
 
-@router.get("/{user_id}", response_model=UserDetail)
+@router.get(
+    "/{user_id}", 
+    response_model=UserDetail,
+    summary="사용자 상세 정보",
+    description="특정 사용자의 상세 정보를 조회합니다. 팔로워, 팔로잉, 최근 댓글 등 상세 데이터가 포함됩니다."
+)
 async def get_user_detail(
     user_id: int,
     current_user: Optional[User] = Depends(get_optional_current_user),
@@ -36,7 +41,12 @@ async def get_user_detail(
             detail=str(e)
         )
 
-@router.get("/me", response_model=UserDetail)
+@router.get(
+    "/me", 
+    response_model=UserDetail,
+    summary="내 프로필 조회",
+    description="현재 로그인한 사용자의 프로필 정보를 조회합니다. 이메일 등 개인정보도 포함됩니다."
+)
 async def get_my_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -54,7 +64,12 @@ async def get_my_profile(
             detail=str(e)
         )
 
-@router.get("/dev/all", response_model=list[User])
+@router.get(
+    "/dev/all", 
+    response_model=list[User],
+    summary="전체 사용자 조회",
+    description="개발용 엔드포인트입니다. DB에 등록된 모든 사용자 목록을 조회합니다."
+)
 async def get_all_users(db: Session = Depends(get_db)):
     """DB 전체 사용자 조회"""
     user_service = UserService()
