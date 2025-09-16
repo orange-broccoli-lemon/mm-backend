@@ -7,6 +7,8 @@ from app.schemas.user import User, UserDetail
 from app.services.user_service import UserService
 from app.database import get_db
 from app.core.dependencies import get_current_user, get_optional_current_user
+from app.schemas.movie import WatchlistMovie
+from app.services.movie_service import MovieService
 
 router = APIRouter()
 
@@ -77,6 +79,56 @@ async def get_all_users(db: Session = Depends(get_db)):
     try:
         users = await user_service.get_all_users()
         return users
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get(
+    "/me/watchlist",
+    response_model=list[WatchlistMovie],
+    summary="내 왓치리스트 조회",
+    description="현재 로그인한 사용자의 왓치리스트에 추가된 영화 목록을 조회합니다."
+)
+async def get_my_watchlist(
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """내 왓치리스트 조회"""
+    movie_service = MovieService()
+    
+    try:
+        watchlist = await movie_service.get_user_watchlist(current_user.user_id, limit, offset)
+        return watchlist
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get(
+    "/me/liked-movies",
+    response_model=list[WatchlistMovie],
+    summary="내가 좋아요한 영화",
+    description="현재 로그인한 사용자가 좋아요한 영화 목록을 조회합니다."
+)
+async def get_my_liked_movies(
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """내가 좋아요한 영화 목록"""
+    movie_service = MovieService()
+    
+    try:
+        liked_movies = await movie_service.get_user_liked_movies(current_user.user_id, limit, offset)
+        return liked_movies
         
     except Exception as e:
         raise HTTPException(
