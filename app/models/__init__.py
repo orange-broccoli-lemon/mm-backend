@@ -11,6 +11,8 @@ from .comment import CommentModel
 from .comment_like import CommentLikeModel
 from .movie_cast import MovieCastModel
 from .person_follow import PersonFollowModel
+from .movie_like import MovieLikeModel
+from .watchlist import WatchlistModel
 
 
 __all__ = [
@@ -25,4 +27,6 @@ __all__ = [
     "CommentLikeModel",
     "MovieCastModel",
     "PersonFollowModel",
+    "MovieLikeModel",
+    "WatchlistModel",
 ]

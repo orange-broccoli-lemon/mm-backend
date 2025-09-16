@@ -1,34 +1,20 @@
-# app/api/v1/comments.py
-
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from app.schemas.comment import Comment, CommentCreate, CommentUpdate
 from app.schemas.user import User
 from app.services.comment_service import CommentService
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user
 
 router = APIRouter()
 
 def get_comment_service() -> CommentService:
     return CommentService()
 
-# 선택적 인증
-async def get_current_user_optional() -> Optional[User]:
-    try:
-        from fastapi import Request
-        from fastapi.security import HTTPBearer
-        security = HTTPBearer(auto_error=False)
-        
-        # 토큰이 없어도 에러 발생하지 않음
-        return None
-    except:
-        return None
-
 @router.post(
     "/",
     response_model=Comment,
     summary="댓글 작성",
-    description="영화에 댓글을 작성합니다."
+    description="영화에 댓글을 작성합니다. 평점, 시청 날짜, 공개 여부를 설정할 수 있습니다."
 )
 async def create_comment(
     comment_data: CommentCreate,
@@ -45,32 +31,21 @@ async def create_comment(
     "/movie/{movie_id}",
     response_model=List[Comment],
     summary="영화 댓글 조회",
-    description="특정 영화의 모든 댓글을 조회합니다."
+    description="특정 영화의 댓글을 조회합니다. 스포일러 포함 여부를 선택할 수 있습니다."
 )
 async def get_movie_comments(
     movie_id: int = Path(description="영화 ID"),
+    include_spoilers: bool = Query(default=False, description="스포일러 댓글 포함 여부"),
+    limit: int = Query(default=20, ge=1, le=100, description="가져올 댓글 수"),
+    offset: int = Query(default=0, ge=0, description="건너뛸 댓글 수"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     try:
-        # 로그인하지 않아도 댓글 조회 가능
-        comments = await comment_service.get_movie_comments(movie_id, None)
-        return comments
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get(
-    "/movie/{movie_id}/authenticated",
-    response_model=List[Comment],
-    summary="영화 댓글 조회 (인증)",
-    description="로그인한 사용자의 좋아요 정보를 포함한 댓글 조회"
-)
-async def get_movie_comments_authenticated(
-    movie_id: int = Path(description="영화 ID"),
-    current_user: User = Depends(get_current_user),
-    comment_service: CommentService = Depends(get_comment_service)
-):
-    try:
-        comments = await comment_service.get_movie_comments(movie_id, current_user.user_id)
+        current_user_id = current_user.user_id if current_user else None
+        comments = await comment_service.get_movie_comments(
+            movie_id, current_user_id, include_spoilers, limit, offset
+        )
         return comments
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -79,7 +54,7 @@ async def get_movie_comments_authenticated(
     "/{comment_id}",
     response_model=Comment,
     summary="댓글 수정",
-    description="자신의 댓글을 수정합니다."
+    description="자신의 댓글을 수정합니다. 평점, 시청 날짜, 공개 여부도 변경할 수 있습니다."
 )
 async def update_comment(
     comment_id: int = Path(description="댓글 ID"),
