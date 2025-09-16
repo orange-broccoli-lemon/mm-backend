@@ -104,7 +104,12 @@ async def search_persons(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@router.get("/", response_model=list[Person])
+@router.get(
+    "/", 
+    response_model=list[Person],
+    summary="DB 전체 인물 조회 (개발용)",
+    description="개발용 엔드포인트입니다. DB에 저장된 모든 인물 목록을 조회합니다."
+)
 async def get_all_persons(db: Session = Depends(get_db)):
     """DB 전체 인물 조회"""
     person_service = PersonService()
