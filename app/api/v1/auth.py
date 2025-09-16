@@ -1,6 +1,6 @@
 # app/api/v1/auth.py
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from fastapi.responses import RedirectResponse
 from app.schemas.user import (
     User, UserCreateEmail, UserCreateGoogle, 
@@ -93,50 +93,48 @@ async def check_email(
         raise HTTPException(status_code=500, detail=f"이메일 확인 실패: {str(e)}")
 
 
-@router.get(
-    "/google/login",
-    summary="Google 로그인 URL 생성",
-    description="Google OAuth 로그인을 위한 URL을 생성합니다."
+@router.post(
+    "/login/google",
+    response_model=TokenResponse,
+    summary="Google 로그인",
+    description="프런트엔드에서 전달된 Google id_token을 검증하고 내부 JWT를 발급합니다."
 )
-async def google_login():
-    google_service = GoogleOAuthService()
-    login_url = google_service.get_login_url()
-    return {"url": login_url}
-
-@router.get(
-    "/google/callback",
-    summary="Google OAuth 콜백",
-    description="Google OAuth 인증 후 콜백을 처리합니다."
-)
-async def google_callback(
-    code: str,
+async def login_google(
+    payload: dict = Body(...),
     user_service: UserService = Depends(get_user_service)
 ):
+    id_token_str = payload.get("id_token")
+    if not id_token_str:
+        raise HTTPException(status_code=400, detail="id_token is required")
+
     google_service = GoogleOAuthService()
-    user_info = google_service.get_user_info_from_code(code)
-    if not user_info:
-        return RedirectResponse("http://localhost:5173/login", status_code=302)
+    try:
+        token_info = google_service.verify_id_token(id_token_str)
+        email = token_info.get("email")
+        sub = token_info.get("sub")
+        name = token_info.get("name")
+        picture = token_info.get("picture")
 
-    user = await user_service.authenticate_user_google(
-        email=user_info["email"], google_id=user_info["id"]
-    )
-    if not user:
-        user_data = UserCreateGoogle(
-            google_id=user_info["id"],
-            email=user_info["email"],
-            name=user_info["name"],
-            profile_image_url=user_info.get("picture")
-        )
-        user = await user_service.create_user_google(user_data)
+        if not email or not sub:
+            raise HTTPException(status_code=400, detail="Invalid Google token payload")
 
-    access_token = create_access_token(data={"sub": user.email})
+        user = await user_service.authenticate_user_google(email=email, google_id=sub)
+        if not user:
+            user = await user_service.create_user_google(
+                UserCreateGoogle(
+                    google_id=sub,
+                    email=email,
+                    name=name,
+                    profile_image_url=picture
+                )
+            )
 
-    resp = RedirectResponse("http://localhost:5173/auth/google/callback", status_code=302)
-    resp.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,
-        samesite="Lax"
-    )
-    return resp
+        access_token = create_access_token(data={"sub": user.email})
+
+        return TokenResponse(access_token=access_token, user=user)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Google token verify failed: {str(e)}")
+        
