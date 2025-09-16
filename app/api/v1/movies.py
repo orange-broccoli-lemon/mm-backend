@@ -44,8 +44,8 @@ async def get_popular_movies(
 @router.get(
     "/{movie_id}",
     response_model=Dict[str, Any],
-    summary="영화 상세 정보 (출연진 포함)",
-    description="영화 상세 정보와 출연진을 함께 조회합니다. DB에서 먼저 찾고, 없으면 TMDB API에서 가져와 저장합니다."
+    summary="영화 상세 정보 ",
+    description="영화 상세 정보를 조회합니다. DB에서 먼저 찾고, 없으면 TMDB API에서 가져와 저장합니다."
 )
 async def get_movie_details(
     movie_id: int = Path(description="TMDB 영화 ID"),
@@ -75,32 +75,6 @@ async def get_movie_details(
             status_code=500,
             detail=f"영화 상세 정보를 불러오는데 실패했습니다: {str(e)}"
         )
-
-@router.get(
-    "/{movie_id}/basic",
-    response_model=Movie,
-    summary="영화 기본 정보만",
-    description="영화 기본 정보만 조회합니다 (출연진 제외)."
-)
-async def get_movie_basic_info(
-    movie_id: int = Path(description="TMDB 영화 ID"),
-    movie_service: MovieService = Depends(get_movie_service)
-):
-    """영화 기본 정보만 조회"""
-    try:
-        movie_with_cast = await movie_service.get_movie_by_movie_id(movie_id)
-        
-        if not movie_with_cast:
-            raise HTTPException(status_code=404, detail="영화를 찾을 수 없습니다")
-        
-        # cast, crew 제외하고 기본 정보만 반환
-        movie_basic = {k: v for k, v in movie_with_cast.items() if k not in ['cast', 'crew']}
-        return movie_basic
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(
     "/",

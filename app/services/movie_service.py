@@ -119,7 +119,7 @@ class MovieService:
             return None
     
     async def _get_movie_cast_info(self, movie_id: int) -> dict:
-        """영화의 출연진/스태프 정보 조회"""
+        """영화의 출연진/감독 조회 (department 기준 분류, 배우 10/감독 1 응답)"""
         try:
             stmt = select(
                 MovieCastModel.person_id,
@@ -134,16 +134,17 @@ class MovieService:
                 PersonModel, MovieCastModel.person_id == PersonModel.person_id
             ).where(
                 MovieCastModel.movie_id == movie_id
-            ).order_by(MovieCastModel.cast_order.nulls_last())
-            
-            result = self.db.execute(stmt)
-            cast_data = result.fetchall()
-            
-            cast_list = []
-            crew_list = []
-            
-            for row in cast_data:
-                person_info = {
+            ).order_by(
+                MovieCastModel.cast_order.nulls_last()
+            )
+
+            rows = self.db.execute(stmt).fetchall()
+
+            cast_acting = []
+            directors = []
+
+            for row in rows:
+                item = {
                     "person_id": row.person_id,
                     "name": row.name,
                     "profile_image_url": row.profile_image_url,
@@ -153,55 +154,77 @@ class MovieService:
                     "cast_order": row.cast_order,
                     "is_main_cast": row.is_main_cast
                 }
-                
+
                 if row.department == "Acting":
-                    cast_list.append(person_info)
-                else:
-                    crew_list.append(person_info)
-            
-            return {"cast": cast_list, "crew": crew_list}
-            
+                    cast_acting.append(item)
+
+                elif row.department == "Directing" and row.job == "Director":
+                    directors.append(item)
+
+            return {
+                "cast": cast_acting[:10],
+                "crew": directors[:1],
+                "cast_total": len(cast_acting),
+                "directors_total": len(directors)
+            }
+
         except Exception as e:
             print(f"출연진 조회 실패: {str(e)}")
-            return {"cast": [], "crew": []}
-    
+            return {"cast": [], "crew": [], "cast_total": 0, "directors_total": 0}
+
     async def _save_movie_cast(self, movie_id: int, credits: dict):
-        """출연진/스태프 정보 저장"""
+        """TMDB cast 저장"""
         try:
-            # 출연진 저장
-            for cast in credits.get("cast", [])[:30]:  # 상위 30명만
+            for cast in credits.get("cast", []):
                 person_id = cast.get("id")
-                if person_id:
+                if not person_id:
+                    continue
+
+                name = cast.get("name", "")
+                profile_path = cast.get("profile_path")
+                character = cast.get("character")
+                order = cast.get("order", 999)
+                job = cast.get("job") or "Actor"
+                department = cast.get("department") or "Acting"
+
+                await self._ensure_person_exists(
+                    person_id=person_id,
+                    name=name,
+                    profile_path=profile_path
+                )
+
+                await self._save_cast_connection(
+                    movie_id=movie_id,
+                    person_id=person_id,
+                    character=character,
+                    job=job,
+                    department=department,
+                    order=order
+                )
+
+            director = next((c for c in credits.get("crew", []) if c.get("job") == "Director"), None)
+
+            if director:
+                director_id = director.get("id")
+                if director_id:
                     await self._ensure_person_exists(
-                        person_id, cast.get("name", ""), 
-                        cast.get("profile_path"), "Acting"
+                        person_id=director_id,
+                        name=director.get("name", ""),
+                        profile_path=director.get("profile_path")
                     )
                     await self._save_cast_connection(
-                        movie_id, person_id, cast.get("character"),
-                        "Actor", "Acting", cast.get("order", 999)
+                        movie_id=movie_id,
+                        person_id=director_id,
+                        character=None,
+                        job="Director",
+                        department=director.get("department") or "Directing",
+                        order=None
                     )
-            
-            # 주요 스태프 저장
-            important_jobs = ["Director", "Producer", "Executive Producer", 
-                            "Screenplay", "Story", "Director of Photography"]
-            for crew in credits.get("crew", []):
-                if crew.get("job") in important_jobs:
-                    person_id = crew.get("id")
-                    if person_id:
-                        await self._ensure_person_exists(
-                            person_id, crew.get("name", ""),
-                            crew.get("profile_path"), crew.get("job")
-                        )
-                        await self._save_cast_connection(
-                            movie_id, person_id, None,
-                            crew.get("job"), crew.get("department"), None
-                        )
-            
+
         except Exception as e:
-            print(f"출연진 저장 실패: {str(e)}")
+            print(f"출연진/감독 저장 실패: {str(e)}")
     
-    async def _ensure_person_exists(self, person_id: int, name: str, 
-                                  profile_path: Optional[str], department: str):
+    async def _ensure_person_exists(self, person_id: int, name: str, profile_path: Optional[str]):
         """인물 정보가 DB에 없으면 생성"""
         try:
             stmt = select(PersonModel).where(PersonModel.person_id == person_id)
@@ -212,7 +235,6 @@ class MovieService:
                     person_id=person_id,
                     name=name,
                     profile_image_url=self._build_profile_image_url(profile_path),
-                    known_for_department=department,
                     popularity=0,
                     gender=0,
                     is_adult=False
