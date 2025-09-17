@@ -6,7 +6,7 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-from .deps import check_spiler_ko, check_emotion_ko, detect_toxicity
+from .deps import check_spoiler_ko, check_emotion_ko, detect_toxicity, findbot, concise_reviewbot, profile_reviewbot
 
 # 설정 로드
 settings = get_settings()
@@ -73,7 +73,7 @@ def read_root():
 
 @app.get("/spoilertest/{text}")
 def read_root(text: str):
-    return check_spiler_ko(text)
+    return check_spoiler_ko(text)
 
 @app.get("/emotiontest/{text}")
 def read_root(text: str):
@@ -82,3 +82,15 @@ def read_root(text: str):
 @app.get("/toxictest/{text}")
 def read_root(text: str):
     return detect_toxicity(text)
+
+@app.get("/findbottest/{text}")
+def read_root(text: str):
+    return findbot(text)
+
+@app.get("/concisebot/{text}/{review}")
+def read_root(text: str, review: str):
+    return concise_reviewbot(text, [review])
+
+@app.get("/profilebot/{text}/{review}")
+def read_root(text: str, review:str):
+    return profile_reviewbot(text, [review])
