@@ -206,13 +206,10 @@ async def list_movie_comments(
     current_user: Optional[User] = Depends(get_optional_current_user),
     comment_service: CommentService = Depends(get_comment_service),
 ):
-    try:
-        current_user_id = current_user.user_id if current_user else None
-        return await comment_service.get_movie_comments(
-            movie_id, current_user_id, include_spoilers, limit, offset
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    current_user_id = current_user.user_id if current_user else None
+    return await comment_service.get_movie_comments(
+        movie_id, current_user_id, include_spoilers, limit, offset
+    )
 
 
 @router.post(
