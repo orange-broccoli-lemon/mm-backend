@@ -8,6 +8,7 @@ from google.auth.transport import requests as google_requests
 
 from app.core.config import get_settings
 
+
 class GoogleOAuthService:
     def __init__(self):
         self.settings = get_settings()

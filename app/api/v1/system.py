@@ -6,10 +6,12 @@ from app.database import engine
 
 router = APIRouter()
 
+
 @router.get("/health")
 def health_check():
     """서비스 헬스체크"""
     return {"status": "healthy", "service": "mM"}
+
 
 @router.get("/db-test")
 def test_db():
