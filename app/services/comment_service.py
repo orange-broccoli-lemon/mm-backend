@@ -218,78 +218,88 @@ class CommentService:
             self.db.rollback()
             raise Exception(f"댓글 삭제 실패: {str(e)}")
     
-    async def toggle_like_comment(self, comment_id: int, user_id: int) -> Comment:
+    async def like_comment(self, comment_id: int, user_id: int) -> Comment:
         try:
-            # 댓글 존재 확인 및 사용자 정보 조회
-            comment_stmt = select(
-                CommentModel,
-                UserModel.name.label('user_name'),
-                UserModel.profile_image_url.label('user_profile_image')
-            ).join(
-                UserModel, CommentModel.user_id == UserModel.user_id
-            ).where(CommentModel.comment_id == comment_id)
-            
-            comment_result = self.db.execute(comment_stmt)
-            comment_info = comment_result.first()
-            
+            comment_info = self._get_comment_with_user(comment_id)
             if not comment_info:
                 raise Exception("댓글을 찾을 수 없습니다")
-            
-            comment_model = comment_info[0]
-            user_name = comment_info[1]
-            user_profile_image = comment_info[2]
-            
-            # 기존 좋아요 확인
+
             like_stmt = select(CommentLikeModel).where(
                 and_(
                     CommentLikeModel.comment_id == comment_id,
                     CommentLikeModel.user_id == user_id
                 )
             )
-            like_result = self.db.execute(like_stmt)
-            existing_like = like_result.scalar_one_or_none()
-            
-            if existing_like:
-                # 좋아요 취소
-                self.db.delete(existing_like)
-                is_liked = False
-            else:
-                # 좋아요 추가
-                new_like = CommentLikeModel(
-                    comment_id=comment_id,
-                    user_id=user_id
-                )
+            existing_like = self.db.execute(like_stmt).scalar_one_or_none()
+
+            if not existing_like:
+                new_like = CommentLikeModel(comment_id=comment_id, user_id=user_id)
                 self.db.add(new_like)
-                is_liked = True
-            
-            self.db.commit()
-            
-            # 업데이트된 좋아요 수 계산
-            likes_count = self._get_comment_likes_count(comment_id)
-            
-            comment_dict = {
-                'comment_id': comment_model.comment_id,
-                'movie_id': comment_model.movie_id,
-                'user_id': comment_model.user_id,
-                'content': comment_model.content,
-                'rating': comment_model.rating,
-                'watched_date': comment_model.watched_date,
-                'is_spoiler': comment_model.is_spoiler,
-                'spoiler_confidence': comment_model.spoiler_confidence,
-                'is_public': comment_model.is_public,
-                'created_at': comment_model.created_at,
-                'updated_at': comment_model.updated_at,
-                'likes_count': likes_count,
-                'is_liked': is_liked,
-                'user_name': user_name,
-                'user_profile_image': user_profile_image
-            }
-            
-            return Comment(**comment_dict)
-            
+                self.db.commit()
+            # 이미 좋아요 상태여도 멱등적으로 통과
+
+            return self._build_comment_response(comment_info, user_id)
+
         except Exception as e:
             self.db.rollback()
-            raise Exception(f"댓글 좋아요 처리 실패: {str(e)}")
+            raise Exception(f"댓글 좋아요 실패: {str(e)}")
+
+    async def unlike_comment(self, comment_id: int, user_id: int) -> Comment:
+        try:
+            comment_info = self._get_comment_with_user(comment_id)
+            if not comment_info:
+                raise Exception("댓글을 찾을 수 없습니다")
+
+            like_stmt = select(CommentLikeModel).where(
+                and_(
+                    CommentLikeModel.comment_id == comment_id,
+                    CommentLikeModel.user_id == user_id
+                )
+            )
+            existing_like = self.db.execute(like_stmt).scalar_one_or_none()
+
+            if existing_like:
+                self.db.delete(existing_like)
+                self.db.commit()
+            # 이미 취소 상태여도 멱등적으로 통과
+
+            return self._build_comment_response(comment_info, user_id)
+
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"댓글 좋아요 취소 실패: {str(e)}")
+
+    def _get_comment_with_user(self, comment_id: int):
+        stmt = select(
+            CommentModel,
+            UserModel.name.label('user_name'),
+            UserModel.profile_image_url.label('user_profile_image')
+        ).join(
+            UserModel, CommentModel.user_id == UserModel.user_id
+        ).where(CommentModel.comment_id == comment_id)
+        return self.db.execute(stmt).first()
+
+    def _build_comment_response(self, comment_info, current_user_id: int) -> Comment:
+        comment_model, user_name, user_profile_image = comment_info
+        likes_count = self._get_comment_likes_count(comment_model.comment_id)
+        is_liked = self._is_comment_liked_by_user(comment_model.comment_id, current_user_id)
+        return Comment(
+            comment_id=comment_model.comment_id,
+            movie_id=comment_model.movie_id,
+            user_id=comment_model.user_id,
+            content=comment_model.content,
+            rating=comment_model.rating,
+            watched_date=comment_model.watched_date,
+            is_spoiler=comment_model.is_spoiler,
+            spoiler_confidence=comment_model.spoiler_confidence,
+            is_public=comment_model.is_public,
+            created_at=comment_model.created_at,
+            updated_at=comment_model.updated_at,
+            likes_count=likes_count,
+            is_liked=is_liked,
+            user_name=user_name,
+            user_profile_image=user_profile_image
+        )
     
     def _get_comment_likes_count(self, comment_id: int) -> int:
         """댓글의 좋아요 수 조회"""
