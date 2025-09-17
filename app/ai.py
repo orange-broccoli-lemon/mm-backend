@@ -151,7 +151,6 @@ def findbot(user_content: str):
     return asyncio.run(inner())
 
 
-# uvicorn app.main:app --reload
 # 대답 형태를 제목 근거 줄거리 세로로 나오게
 
 
