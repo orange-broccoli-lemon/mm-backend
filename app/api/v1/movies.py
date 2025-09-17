@@ -49,37 +49,25 @@ async def get_popular_movies(
 @router.get(
     "/{movie_id}",
     response_model=Dict[str, Any],
-    summary="영화 상세 정보 ",
-    description="영화 상세 정보를 조회합니다. DB에서 먼저 찾고, 없으면 TMDB API에서 가져와 저장합니다."
+    summary="영화 상세 정보",
+    description="영화 상세 정보를 조회합니다. DB → TMDB 순으로 조회합니다."
 )
 async def get_movie_details(
     movie_id: int = Path(description="TMDB 영화 ID"),
-    language: str = Query(
-        default="ko-KR",
-        description="언어 코드",
-        regex="^[a-z]{2}-[A-Z]{2}$"
-    ),
-    movie_service: MovieService = Depends(get_movie_service)
+    language: str = Query(default="ko-KR", description="언어 코드", regex="^[a-z]{2}-[A-Z]{2}$"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    movie_service: MovieService = Depends(get_movie_service),
 ):
-    """영화 상세 정보 조회"""
     try:
-        movie_with_cast = await movie_service.get_movie_detail(movie_id)
-        
-        if movie_with_cast:
-            return movie_with_cast
-
-        raise HTTPException(
-            status_code=404,
-            detail=f"영화를 찾을 수 없습니다 (ID: {movie_id})"
-        )
-        
+        user_id = current_user.user_id if current_user else None
+        movie_with_actions = await movie_service.get_movie_detail(movie_id, user_id)
+        if movie_with_actions:
+            return movie_with_actions
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"영화를 찾을 수 없습니다 (ID: {movie_id})")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"영화 상세 정보를 불러오는데 실패했습니다: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"영화 상세 정보를 불러오는데 실패했습니다: {str(e)}")
 
 @router.get(
     "/{movie_id}/genres",
