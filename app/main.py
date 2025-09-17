@@ -69,8 +69,3 @@ def read_root():
         "version": "1.0.0",
         "docs": "/docs",
     }
-
-
-@app.get("/profilebot/{text}/{review}")
-def read_root(text: str, review: str):
-    return profile_reviewbot(text, [review])
