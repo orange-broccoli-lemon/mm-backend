@@ -12,7 +12,7 @@ class Comment(BaseModel):
     content: str = Field(description="댓글 내용")
     rating: Optional[Decimal] = Field(default=None, description="평점 (0.0 ~ 10.0)")
     watched_date: Optional[date] = Field(default=None, description="시청 날짜")
-    is_spoiler: bool = Field(default=False, description="스포일러 여부")
+    is_spoiler: Optional[bool] = Field(default=False, description="스포일러 여부")
     spoiler_confidence: Optional[Decimal] = Field(default=None, description="스포일러 신뢰도")
     is_public: bool = Field(default=True, description="공개 여부")
     likes_count: int = Field(default=0, description="좋아요 수")
@@ -38,7 +38,7 @@ class CommentCreate(BaseModel):
         le=10.0
     )
     watched_date: Optional[date] = Field(default=None, description="시청 날짜")
-    is_spoiler: bool = Field(default=False, description="스포일러 여부")
+    is_spoiler: Optional[bool] = Field(default=False, description="스포일러 여부")
     spoiler_confidence: Optional[Decimal] = Field(
         default=None, 
         description="스포일러 신뢰도 (0.0 ~ 1.0)", 
@@ -57,7 +57,7 @@ class CommentUpdate(BaseModel):
         le=10.0
     )
     watched_date: Optional[date] = Field(default=None, description="시청 날짜")
-    is_spoiler: Optional[bool] = Field(default=None, description="스포일러 여부")
+    is_spoiler: Optional[bool] = Field(default=False, description="스포일러 여부")
     spoiler_confidence: Optional[Decimal] = Field(
         default=None, 
         description="스포일러 신뢰도 (0.0 ~ 1.0)", 
