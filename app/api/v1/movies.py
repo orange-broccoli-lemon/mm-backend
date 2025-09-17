@@ -1,6 +1,6 @@
 # app/api/v1/movies.py
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Query, Path, Depends
 from app.schemas import Movie
 from app.services.tmdb_service import TMDBService
@@ -9,14 +9,19 @@ from app.schemas.movie import (
     Movie, MovieLike, MovieLikeRequest, Watchlist, 
     WatchlistRequest, WatchlistMovie, MovieWithUserActions
 )
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_optional_current_user
 from app.models import UserModel as User
+from app.services.comment_service import CommentService
+from app.schemas.comment import Comment, CommentCreate
 
 router = APIRouter()
 tmdb_service = TMDBService()
 
 def get_movie_service() -> MovieService:
     return MovieService()
+
+def get_comment_service() -> CommentService:
+    return CommentService()
 
 @router.get(
     "/popular",
@@ -75,23 +80,6 @@ async def get_movie_details(
             status_code=500,
             detail=f"영화 상세 정보를 불러오는데 실패했습니다: {str(e)}"
         )
-
-@router.get(
-    "/",
-    response_model=List[Movie],
-    summary="DB 영화 목록",
-    description="데이터베이스에 저장된 모든 영화 목록을 조회합니다."
-)
-async def get_all_movies(
-    skip: int = Query(default=0, ge=0, description="건너뛸 영화 수"),
-    limit: int = Query(default=50, ge=1, le=100, description="가져올 영화 수"),
-    movie_service: MovieService = Depends(get_movie_service)
-):
-    try:
-        movies = await movie_service.get_all_movies(skip, limit)
-        return movies
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(
     "/{movie_id}/genres",
@@ -218,3 +206,58 @@ async def remove_from_watchlist(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail=str(e)
         )
+
+@router.get(
+    "/{movie_id}/comments",
+    response_model=List[Comment],
+    summary="영화 댓글 목록",
+    description="특정 영화의 댓글을 조회합니다."
+)
+async def list_movie_comments(
+    movie_id: int = Path(description="영화 ID"),
+    include_spoilers: bool = Query(default=False, description="스포일러 포함 여부"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
+):
+    try:
+        current_user_id = current_user.user_id if current_user else None
+        return await comment_service.get_movie_comments(movie_id, current_user_id, include_spoilers, limit, offset)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post(
+    "/{movie_id}/comments",
+    response_model=Comment,
+    summary="영화 댓글 작성",
+    description="특정 영화에 댓글을 작성합니다."
+)
+async def create_movie_comment(
+    movie_id: int = Path(description="영화 ID"),
+    comment_data: CommentCreate = ...,
+    current_user: User = Depends(get_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
+):
+    try:
+        comment_data.movie_id = movie_id
+        return await comment_service.create_comment(comment_data, current_user.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.get(
+    "/",
+    response_model=List[Movie],
+    summary="DB 영화 목록",
+    description="데이터베이스에 저장된 모든 영화 목록을 조회합니다."
+)
+async def get_all_movies(
+    skip: int = Query(default=0, ge=0, description="건너뛸 영화 수"),
+    limit: int = Query(default=50, ge=1, le=100, description="가져올 영화 수"),
+    movie_service: MovieService = Depends(get_movie_service)
+):
+    try:
+        movies = await movie_service.get_all_movies(skip, limit)
+        return movies
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
