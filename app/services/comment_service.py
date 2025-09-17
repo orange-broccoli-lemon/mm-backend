@@ -13,6 +13,16 @@ class CommentService:
     def __init__(self):
         self.db: Session = next(get_db())
     
+    async def get_comment(self, comment_id: int, current_user_id: Optional[int] = None) -> Comment:
+        try:
+            info = self._get_comment_with_user(comment_id)
+            if not info:
+                raise Exception("댓글을 찾을 수 없습니다")
+            uid = current_user_id if current_user_id is not None else -1
+            return self._build_comment_response(info, uid)
+        except Exception as e:
+            raise Exception(f"댓글 단건 조회 실패: {str(e)}")
+    
     async def create_comment(self, comment_data: CommentCreate, user_id: int) -> Comment:
         try:
             comment_model = CommentModel(
