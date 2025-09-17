@@ -1,7 +1,7 @@
 # app/api/v1/movies.py
 
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query, Path, Depends
+from fastapi import APIRouter, HTTPException, Query, Path, Depends, status
 from app.schemas import Movie
 from app.services.tmdb_service import TMDBService
 from app.services.movie_service import MovieService

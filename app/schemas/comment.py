@@ -13,15 +13,26 @@ class Comment(BaseModel):
     content: str = Field(description="댓글 내용")
     rating: Optional[Decimal] = Field(default=None, description="평점 (0.0 ~ 10.0)")
     watched_date: Optional[date] = Field(default=None, description="시청 날짜")
+
+    # AI 필드
     is_spoiler: Optional[bool] = Field(default=False, description="스포일러 여부")
-    spoiler_confidence: Optional[Decimal] = Field(default=None, description="스포일러 신뢰도")
+    spoiler_confidence: Optional[Decimal] = Field(
+        default=None, description="스포일러 신뢰도 (0.0~1.0)"
+    )
+    is_positive: Optional[bool] = Field(default=None, description="긍정 감정 여부")
+    positive_confidence: Optional[Decimal] = Field(
+        default=None, description="긍정 신뢰도 (0.0~1.0)"
+    )
+    is_toxic: Optional[bool] = Field(default=None, description="욕설 여부")
+    toxic_confidence: Optional[Decimal] = Field(default=None, description="욕설 신뢰도 (0.0~1.0)")
+
     is_public: bool = Field(default=True, description="공개 여부")
     likes_count: int = Field(default=0, description="좋아요 수")
     is_liked: bool = Field(default=False, description="현재 사용자 좋아요 여부")
     created_at: Optional[datetime] = Field(default=None, description="생성일시")
     updated_at: Optional[datetime] = Field(default=None, description="수정일시")
 
-    # 사용자 정보 (조회시 포함)
+    # 작성자 정보
     user_name: Optional[str] = Field(default=None, description="작성자 이름")
     user_profile_image: Optional[str] = Field(default=None, description="작성자 프로필 이미지")
 

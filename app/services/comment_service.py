@@ -6,6 +6,8 @@ from app.models.comment_like import CommentLikeModel
 from app.models.user import UserModel
 from app.schemas.comment import Comment, CommentCreate, CommentUpdate
 from app.database import get_db
+from app.ai import check_spoiler_ko, check_emotion_ko, detect_toxicity
+from decimal import Decimal
 
 
 class CommentService:
@@ -15,59 +17,147 @@ class CommentService:
 
     async def get_comment(self, comment_id: int, current_user_id: Optional[int] = None) -> Comment:
         try:
-            info = self._get_comment_with_user(comment_id)
-            if not info:
+            stmt = (
+                select(
+                    CommentModel,
+                    UserModel.name.label("user_name"),
+                    UserModel.profile_image_url.label("user_profile_image"),
+                    func.count(CommentLikeModel.comment_id).label("likes_count"),
+                )
+                .join(UserModel, CommentModel.user_id == UserModel.user_id)
+                .outerjoin(CommentLikeModel, CommentModel.comment_id == CommentLikeModel.comment_id)
+                .where(CommentModel.comment_id == comment_id)
+                .group_by(CommentModel.comment_id, UserModel.name, UserModel.profile_image_url)
+            )
+            row = self.db.execute(stmt).first()
+            if not row:
                 raise Exception("댓글을 찾을 수 없습니다")
-            uid = current_user_id if current_user_id is not None else -1
-            return self._build_comment_response(info, uid)
+            comment_model, user_name, user_profile_image, likes_count = row
+            return self._build_comment_response(
+                comment_model, user_name, user_profile_image, likes_count, current_user_id
+            )
         except Exception as e:
             raise Exception(f"댓글 단건 조회 실패: {str(e)}")
 
+    def _run_ai_pipelines(self, content: str) -> dict:
+        try:
+            sp = check_spoiler_ko(content)
+            is_spoiler = bool(sp.get("is_spoiler", 0))
+            spoiler_conf = Decimal(str(sp.get("spoiler_score", 0.0)))
+        except Exception:
+            is_spoiler, spoiler_conf = False, Decimal("0.0")
+
+        try:
+            em = check_emotion_ko(content)
+            is_positive = bool(em.get("is_positive", 0))
+            positive_conf = Decimal(str(em.get("confidence", 0.0)))
+        except Exception:
+            is_positive, positive_conf = None, None
+
+        try:
+            tx = detect_toxicity(content)
+            is_toxic = bool(tx.get("is_toxic", 0))
+            toxic_conf = Decimal(str(tx.get("confidence", 0.0)))
+        except Exception:
+            is_toxic, toxic_conf = None, None
+
+        return {
+            "is_spoiler": is_spoiler,
+            "spoiler_confidence": spoiler_conf,
+            "is_positive": is_positive,
+            "positive_confidence": positive_conf,
+            "is_toxic": is_toxic,
+            "toxic_confidence": toxic_conf,
+        }
+
     async def create_comment(self, comment_data: CommentCreate, user_id: int) -> Comment:
         try:
+            ai = self._run_ai_pipelines(comment_data.content)
             comment_model = CommentModel(
                 movie_id=comment_data.movie_id,
                 user_id=user_id,
                 content=comment_data.content,
                 rating=comment_data.rating,
                 watched_date=comment_data.watched_date,
-                is_spoiler=comment_data.is_spoiler,
-                spoiler_confidence=comment_data.spoiler_confidence,
+                is_spoiler=ai["is_spoiler"],
+                spoiler_confidence=ai["spoiler_confidence"],
+                is_positive=ai["is_positive"],
+                positive_confidence=ai["positive_confidence"],
+                is_toxic=ai["is_toxic"],
+                toxic_confidence=ai["toxic_confidence"],
                 is_public=comment_data.is_public,
             )
-
             self.db.add(comment_model)
             self.db.commit()
             self.db.refresh(comment_model)
 
-            # 사용자 정보 조회
             user_stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_result = self.db.execute(user_stmt)
-            user_model = user_result.scalar_one_or_none()
+            user_model = self.db.execute(user_stmt).scalar_one_or_none()
 
-            comment_dict = {
-                "comment_id": comment_model.comment_id,
-                "movie_id": comment_model.movie_id,
-                "user_id": comment_model.user_id,
-                "content": comment_model.content,
-                "rating": comment_model.rating,
-                "watched_date": comment_model.watched_date,
-                "is_spoiler": comment_model.is_spoiler,
-                "spoiler_confidence": comment_model.spoiler_confidence,
-                "is_public": comment_model.is_public,
-                "created_at": comment_model.created_at,
-                "updated_at": comment_model.updated_at,
-                "likes_count": 0,
-                "is_liked": False,
-                "user_name": user_model.name if user_model else None,
-                "user_profile_image": user_model.profile_image_url if user_model else None,
-            }
-
-            return Comment(**comment_dict)
-
+            return self._build_comment_response(
+                comment_model,
+                user_model.name if user_model else None,
+                user_model.profile_image_url if user_model else None,
+                likes_count=0,
+                current_user_id=None,
+                precomputed_is_liked=False,
+            )
         except Exception as e:
             self.db.rollback()
             raise Exception(f"댓글 작성 실패: {str(e)}")
+
+    async def update_comment(
+        self, comment_id: int, comment_data: CommentUpdate, user_id: int
+    ) -> Comment:
+        try:
+            stmt = select(CommentModel).where(CommentModel.comment_id == comment_id)
+            comment_model = self.db.execute(stmt).scalar_one_or_none()
+            if not comment_model:
+                raise Exception("댓글을 찾을 수 없습니다")
+            if comment_model.user_id != user_id:
+                raise Exception("본인의 댓글만 수정할 수 있습니다")
+
+            content_changed = False
+            if comment_data.content is not None and comment_data.content != comment_model.content:
+                comment_model.content = comment_data.content
+                content_changed = True
+
+            if comment_data.rating is not None:
+                comment_model.rating = comment_data.rating
+            if comment_data.watched_date is not None:
+                comment_model.watched_date = comment_data.watched_date
+            if comment_data.is_public is not None:
+                comment_model.is_public = comment_data.is_public
+
+            if content_changed:
+                ai = self._run_ai_pipelines(comment_model.content)
+                comment_model.is_spoiler = ai["is_spoiler"]
+                comment_model.spoiler_confidence = ai["spoiler_confidence"]
+                comment_model.is_positive = ai["is_positive"]
+                comment_model.positive_confidence = ai["positive_confidence"]
+                comment_model.is_toxic = ai["is_toxic"]
+                comment_model.toxic_confidence = ai["toxic_confidence"]
+            else:
+                if comment_data.is_spoiler is not None:
+                    comment_model.is_spoiler = comment_data.is_spoiler
+
+            self.db.commit()
+            self.db.refresh(comment_model)
+
+            user_stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = self.db.execute(user_stmt).scalar_one_or_none()
+            likes_count = self._get_comment_likes_count(comment_id)
+
+            return self._build_comment_response(
+                comment_model,
+                user_model.name if user_model else None,
+                user_model.profile_image_url if user_model else None,
+                likes_count=likes_count,
+                current_user_id=user_id,
+            )
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"댓글 수정 실패: {str(e)}")
 
     async def get_movie_comments(
         self,
@@ -78,7 +168,6 @@ class CommentService:
         offset: int = 0,
     ) -> List[Comment]:
         try:
-            # 사용자 정보와 좋아요 수를 함께 조회
             stmt = (
                 select(
                     CommentModel,
@@ -91,12 +180,10 @@ class CommentService:
                 .where(
                     and_(
                         CommentModel.movie_id == movie_id,
-                        CommentModel.is_public == True,  # 공개 댓글만
+                        CommentModel.is_public == True,
                     )
                 )
             )
-
-            # 스포일러 필터링
             if not include_spoilers:
                 stmt = stmt.where(CommentModel.is_spoiler == False)
 
@@ -107,105 +194,34 @@ class CommentService:
                 .offset(offset)
             )
 
-            result = self.db.execute(stmt)
-            comments_with_info = result.all()
+            rows = self.db.execute(stmt).all()
 
-            comment_list = []
-            for comment_model, user_name, user_profile_image, likes_count in comments_with_info:
-                is_liked = False
-                if current_user_id:
-                    is_liked = self._is_comment_liked_by_user(
-                        comment_model.comment_id, current_user_id
+            liked_ids = set()
+            if current_user_id and rows:
+                id_list = [r[0].comment_id for r in rows]
+                liked_stmt = select(CommentLikeModel.comment_id).where(
+                    and_(
+                        CommentLikeModel.user_id == current_user_id,
+                        CommentLikeModel.comment_id.in_(id_list),
                     )
+                )
+                liked_ids = set(cid for (cid,) in self.db.execute(liked_stmt).all())
 
-                comment_dict = {
-                    "comment_id": comment_model.comment_id,
-                    "movie_id": comment_model.movie_id,
-                    "user_id": comment_model.user_id,
-                    "content": comment_model.content,
-                    "rating": comment_model.rating,
-                    "watched_date": comment_model.watched_date,
-                    "is_spoiler": comment_model.is_spoiler,
-                    "spoiler_confidence": comment_model.spoiler_confidence,
-                    "is_public": comment_model.is_public,
-                    "created_at": comment_model.created_at,
-                    "updated_at": comment_model.updated_at,
-                    "likes_count": likes_count or 0,
-                    "is_liked": is_liked,
-                    "user_name": user_name,
-                    "user_profile_image": user_profile_image,
-                }
-
-                comment_list.append(Comment(**comment_dict))
-
-            return comment_list
-
+            result: List[Comment] = []
+            for comment_model, user_name, user_profile_image, likes_count in rows:
+                pre_is_liked = (comment_model.comment_id in liked_ids) if current_user_id else False
+                item = self._build_comment_response(
+                    comment_model,
+                    user_name,
+                    user_profile_image,
+                    likes_count,
+                    current_user_id,
+                    precomputed_is_liked=pre_is_liked,
+                )
+                result.append(item)
+            return result
         except Exception as e:
             raise Exception(f"댓글 조회 실패: {str(e)}")
-
-    async def update_comment(
-        self, comment_id: int, comment_data: CommentUpdate, user_id: int
-    ) -> Comment:
-        try:
-            stmt = select(CommentModel).where(CommentModel.comment_id == comment_id)
-            result = self.db.execute(stmt)
-            comment_model = result.scalar_one_or_none()
-
-            if not comment_model:
-                raise Exception("댓글을 찾을 수 없습니다")
-
-            if comment_model.user_id != user_id:
-                raise Exception("본인의 댓글만 수정할 수 있습니다")
-
-            # 업데이트할 필드만 변경
-            if comment_data.content is not None:
-                comment_model.content = comment_data.content
-            if comment_data.rating is not None:
-                comment_model.rating = comment_data.rating
-            if comment_data.watched_date is not None:
-                comment_model.watched_date = comment_data.watched_date
-            if comment_data.is_spoiler is not None:
-                comment_model.is_spoiler = comment_data.is_spoiler
-            if comment_data.spoiler_confidence is not None:
-                comment_model.spoiler_confidence = comment_data.spoiler_confidence
-            if comment_data.is_public is not None:
-                comment_model.is_public = comment_data.is_public
-
-            self.db.commit()
-            self.db.refresh(comment_model)
-
-            # 사용자 정보 조회
-            user_stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_result = self.db.execute(user_stmt)
-            user_model = user_result.scalar_one_or_none()
-
-            # 좋아요 수와 현재 사용자 좋아요 여부 계산
-            likes_count = self._get_comment_likes_count(comment_id)
-            is_liked = self._is_comment_liked_by_user(comment_id, user_id)
-
-            comment_dict = {
-                "comment_id": comment_model.comment_id,
-                "movie_id": comment_model.movie_id,
-                "user_id": comment_model.user_id,
-                "content": comment_model.content,
-                "rating": comment_model.rating,
-                "watched_date": comment_model.watched_date,
-                "is_spoiler": comment_model.is_spoiler,
-                "spoiler_confidence": comment_model.spoiler_confidence,
-                "is_public": comment_model.is_public,
-                "created_at": comment_model.created_at,
-                "updated_at": comment_model.updated_at,
-                "likes_count": likes_count,
-                "is_liked": is_liked,
-                "user_name": user_model.name if user_model else None,
-                "user_profile_image": user_model.profile_image_url if user_model else None,
-            }
-
-            return Comment(**comment_dict)
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"댓글 수정 실패: {str(e)}")
 
     async def delete_comment(self, comment_id: int, user_id: int) -> bool:
         try:
@@ -308,6 +324,40 @@ class CommentService:
             created_at=comment_model.created_at,
             updated_at=comment_model.updated_at,
             likes_count=likes_count,
+            is_liked=is_liked,
+            user_name=user_name,
+            user_profile_image=user_profile_image,
+        )
+
+    def _build_comment_response(
+        self,
+        comment_model: CommentModel,
+        user_name: Optional[str],
+        user_profile_image: Optional[str],
+        likes_count: int,
+        current_user_id: Optional[int],
+        precomputed_is_liked: Optional[bool] = None,
+    ) -> Comment:
+        is_liked = precomputed_is_liked if precomputed_is_liked is not None else False
+        if precomputed_is_liked is None and current_user_id:
+            is_liked = self._is_comment_liked_by_user(comment_model.comment_id, current_user_id)
+        return Comment(
+            comment_id=comment_model.comment_id,
+            movie_id=comment_model.movie_id,
+            user_id=comment_model.user_id,
+            content=comment_model.content,
+            rating=comment_model.rating,
+            watched_date=comment_model.watched_date,
+            is_spoiler=comment_model.is_spoiler,
+            spoiler_confidence=comment_model.spoiler_confidence,
+            is_positive=comment_model.is_positive,
+            positive_confidence=comment_model.positive_confidence,
+            is_toxic=comment_model.is_toxic,
+            toxic_confidence=comment_model.toxic_confidence,
+            is_public=comment_model.is_public,
+            created_at=comment_model.created_at,
+            updated_at=comment_model.updated_at,
+            likes_count=likes_count or 0,
             is_liked=is_liked,
             user_name=user_name,
             user_profile_image=user_profile_image,
