@@ -13,7 +13,7 @@ ENV VENV_PATH="/opt/venv"
 
 # 가상환경 생성
 RUN python -m venv $VENV_PATH
- --
+
 # 가상환경 내 pip 최신화
 RUN $VENV_PATH/bin/pip install --upgrade pip
 
