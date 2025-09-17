@@ -574,7 +574,7 @@ class UserService:
         except Exception as e:
             raise Exception(f"전체 사용자 조회 실패: {str(e)}")
         
-    async def search_users_by_name(self, name: str) -> Optional[List[UserSearchResult]]:
+    async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
         try:
             stmt = (
                 select(UserModel)
