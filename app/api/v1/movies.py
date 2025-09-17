@@ -5,15 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Path, Depends, status
 from app.schemas import Movie
 from app.services.tmdb_service import TMDBService
 from app.services.movie_service import MovieService
-from app.schemas.movie import (
-    Movie,
-    MovieLike,
-    MovieLikeRequest,
-    Watchlist,
-    WatchlistRequest,
-    WatchlistMovie,
-    MovieWithUserActions,
-)
+from app.schemas.movie import Movie, MovieLike, Watchlist
 from app.core.dependencies import get_current_user, get_optional_current_user
 from app.models import UserModel as User
 from app.services.comment_service import CommentService
@@ -85,41 +77,37 @@ async def get_movie_details(
 
 
 @router.get(
-    "/{movie_id}/genres",
-    summary="영화 장르 조회",
-    description="특정 영화의 장르 목록을 조회합니다.",
-)
-async def get_movie_genres(
-    movie_id: int = Path(description="영화 ID"),
-    movie_service: MovieService = Depends(get_movie_service),
-):
-    try:
-        genres = await movie_service.get_movie_genres(movie_id)
-        return {"movie_id": movie_id, "genres": genres}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get(
     "/{movie_id}/cast",
-    summary="영화 출연진 조회",
-    description="특정 영화의 출연진 정보를 조회합니다.",
+    summary="영화 출연진/감독 조회",
+    description="특정 영화의 출연진 전체와 감독 1명을 조회합니다.",
 )
-async def get_movie_cast_only(
+async def get_movie_cast(
     movie_id: int = Path(description="영화 ID"),
     movie_service: MovieService = Depends(get_movie_service),
 ):
     try:
-        movie_with_cast = await movie_service.get_movie_by_movie_id(movie_id)
+        cast_info = await movie_service._get_movie_cast_info(movie_id)
 
-        if not movie_with_cast:
-            raise HTTPException(status_code=404, detail="영화를 찾을 수 없습니다")
+        if not cast_info or (not cast_info.get("cast") and not cast_info.get("crew")):
+
+            movie_detail = await movie_service.get_movie_detail(movie_id)
+            if not movie_detail:
+                raise HTTPException(status_code=404, detail="영화를 찾을 수 없습니다")
+            cast_info = {
+                "cast": movie_detail.get("cast", []),
+                "crew": movie_detail.get("crew", []),
+                "cast_total": movie_detail.get("cast_total", 0),
+                "directors_total": movie_detail.get("directors_total", 0),
+            }
 
         return {
             "movie_id": movie_id,
-            "cast": movie_with_cast.get("cast", []),
-            "crew": movie_with_cast.get("crew", []),
+            "cast": cast_info.get("cast", []),
+            "crew": cast_info.get("crew", []),
+            "cast_total": cast_info.get("cast_total", 0),
+            "directors_total": cast_info.get("directors_total", 0),
         }
+
     except HTTPException:
         raise
     except Exception as e:
@@ -218,13 +206,10 @@ async def list_movie_comments(
     current_user: Optional[User] = Depends(get_optional_current_user),
     comment_service: CommentService = Depends(get_comment_service),
 ):
-    try:
-        current_user_id = current_user.user_id if current_user else None
-        return await comment_service.get_movie_comments(
-            movie_id, current_user_id, include_spoilers, limit, offset
-        )
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    current_user_id = current_user.user_id if current_user else None
+    return await comment_service.get_movie_comments(
+        movie_id, current_user_id, include_spoilers, limit, offset
+    )
 
 
 @router.post(

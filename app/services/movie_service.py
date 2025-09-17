@@ -1,5 +1,3 @@
-# app/services/movie_service.py
-
 from typing import List, Optional
 from decimal import Decimal
 from sqlalchemy.orm import Session
@@ -14,7 +12,6 @@ from app.models.watchlist import WatchlistModel
 from app.schemas.movie import Movie, MovieLike, Watchlist, WatchlistMovie
 from app.services.tmdb_service import TMDBService
 from app.database import get_db
-from sqlalchemy import exists, select, literal
 
 
 class MovieService:
@@ -59,11 +56,15 @@ class MovieService:
                 "updated_at": movie_model.updated_at,
             }
 
-            # 4. 출연진/스태프 정보 추가
-            cast_info = await self._get_movie_cast_info(movie_id)
+            # 4. 장르 정보 추가
+            genres = await self.get_movie_genres(movie_id)
+            movie_dict["genres"] = genres
+
+            # 5. 출연진/스태프 정보 추가
+            cast_info = await self._get_movie_cast_info(movie_id, limit_cast=True)
             movie_dict.update(cast_info)
 
-            # 5. 사용자 액션 정보 추가
+            # 6. 사용자 액션 정보 추가
             if user_id:
                 movie_dict["is_liked"] = await self._is_movie_liked(user_id, movie_id)
                 movie_dict["is_in_watchlist"] = await self._is_in_watchlist(user_id, movie_id)
@@ -71,7 +72,7 @@ class MovieService:
                 movie_dict["is_liked"] = False
                 movie_dict["is_in_watchlist"] = False
 
-            # 6. 좋아요 수 추가
+            # 7. 좋아요 수 추가
             movie_dict["likes_count"] = await self._get_movie_likes_count(movie_id)
 
             return movie_dict
@@ -79,6 +80,24 @@ class MovieService:
         except Exception as e:
             print(f"영화 상세 조회 실패: {str(e)}")
             raise Exception(f"영화 상세 조회 실패: {str(e)}")
+
+    async def get_movie_genres(self, movie_id: int) -> List[dict]:
+        """영화의 장르 목록 조회"""
+        try:
+            stmt = (
+                select(GenreModel)
+                .join(MovieGenreModel, GenreModel.genre_id == MovieGenreModel.genre_id)
+                .where(MovieGenreModel.movie_id == movie_id)
+            )
+
+            result = self.db.execute(stmt)
+            genres = result.scalars().all()
+
+            return [{"id": genre.genre_id, "name": genre.name} for genre in genres]
+
+        except Exception as e:
+            print(f"영화 장르 조회 실패: {str(e)}")
+            return []
 
     async def _fetch_and_save_from_tmdb(self, movie_id: int) -> Optional[MovieModel]:
         """TMDB에서 영화 정보를 가져와서 DB에 저장"""
@@ -121,8 +140,8 @@ class MovieService:
             print(f"TMDB 영화 저장 실패: {str(e)}")
             return None
 
-    async def _get_movie_cast_info(self, movie_id: int) -> dict:
-        """영화의 출연진/감독 조회 (department 기준 분류, 배우 10/감독 1 응답)"""
+    async def _get_movie_cast_info(self, movie_id: int, limit_cast: bool = False) -> dict:
+        """영화의 출연진/감독 조회"""
         try:
             stmt = (
                 select(
@@ -159,12 +178,17 @@ class MovieService:
 
                 if row.department == "Acting":
                     cast_acting.append(item)
-
                 elif row.department == "Directing" and row.job == "Director":
                     directors.append(item)
 
+            # 제한 적용
+            if limit_cast:
+                cast_result = cast_acting[:5]
+            else:
+                cast_result = cast_acting
+
             return {
-                "cast": cast_acting[:10],
+                "cast": cast_result,
                 "crew": directors[:1],
                 "cast_total": len(cast_acting),
                 "directors_total": len(directors),
@@ -177,6 +201,7 @@ class MovieService:
     async def _save_movie_cast(self, movie_id: int, credits: dict):
         """TMDB cast 저장"""
         try:
+            # 배우 저장
             for cast in credits.get("cast", []):
                 person_id = cast.get("id")
                 if not person_id:
@@ -202,6 +227,7 @@ class MovieService:
                     order=order,
                 )
 
+            # 감독 저장
             director = next(
                 (c for c in credits.get("crew", []) if c.get("job") == "Director"), None
             )

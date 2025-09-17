@@ -169,14 +169,8 @@ class CommentService:
     ) -> List[Comment]:
         try:
             stmt = (
-                select(
-                    CommentModel,
-                    UserModel.name.label("user_name"),
-                    UserModel.profile_image_url.label("user_profile_image"),
-                    func.count(CommentLikeModel.comment_id).label("likes_count"),
-                )
+                select(CommentModel, UserModel.name, UserModel.profile_image_url)
                 .join(UserModel, CommentModel.user_id == UserModel.user_id)
-                .outerjoin(CommentLikeModel, CommentModel.comment_id == CommentLikeModel.comment_id)
                 .where(
                     and_(
                         CommentModel.movie_id == movie_id,
@@ -184,44 +178,56 @@ class CommentService:
                     )
                 )
             )
+
             if not include_spoilers:
                 stmt = stmt.where(CommentModel.is_spoiler == False)
 
-            stmt = (
-                stmt.group_by(CommentModel.comment_id, UserModel.name, UserModel.profile_image_url)
-                .order_by(desc(CommentModel.created_at))
-                .limit(limit)
-                .offset(offset)
-            )
+            stmt = stmt.order_by(desc(CommentModel.created_at)).limit(limit).offset(offset)
 
             rows = self.db.execute(stmt).all()
 
+            if not rows:
+                return []
+
+            result: List[Comment] = []
+            comment_ids = [row[0].comment_id for row in rows]
+
+            likes_stmt = (
+                select(CommentLikeModel.comment_id, func.count(CommentLikeModel.user_id))
+                .where(CommentLikeModel.comment_id.in_(comment_ids))
+                .group_by(CommentLikeModel.comment_id)
+            )
+            likes_data = dict(self.db.execute(likes_stmt).all()) if comment_ids else {}
+
             liked_ids = set()
-            if current_user_id and rows:
-                id_list = [r[0].comment_id for r in rows]
+            if current_user_id:
                 liked_stmt = select(CommentLikeModel.comment_id).where(
                     and_(
                         CommentLikeModel.user_id == current_user_id,
-                        CommentLikeModel.comment_id.in_(id_list),
+                        CommentLikeModel.comment_id.in_(comment_ids),
                     )
                 )
                 liked_ids = set(cid for (cid,) in self.db.execute(liked_stmt).all())
 
-            result: List[Comment] = []
-            for comment_model, user_name, user_profile_image, likes_count in rows:
-                pre_is_liked = (comment_model.comment_id in liked_ids) if current_user_id else False
+            for comment_model, user_name, user_profile_image in rows:
+                likes_count = likes_data.get(comment_model.comment_id, 0)
+                is_liked = comment_model.comment_id in liked_ids if current_user_id else False
+
                 item = self._build_comment_response(
                     comment_model,
                     user_name,
                     user_profile_image,
                     likes_count,
                     current_user_id,
-                    precomputed_is_liked=pre_is_liked,
+                    precomputed_is_liked=is_liked,
                 )
                 result.append(item)
+
             return result
+
         except Exception as e:
-            raise Exception(f"댓글 조회 실패: {str(e)}")
+            print(f"댓글 조회 실패: {str(e)}")
+            return []
 
     async def delete_comment(self, comment_id: int, user_id: int) -> bool:
         try:
