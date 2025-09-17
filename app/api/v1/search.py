@@ -28,8 +28,8 @@ def is_valid_search_query(query: str) -> bool:
 @router.get(
     "",
     response_model=SearchResponse,
-    summary="통합 검색",
-    description="영화와 인물(배우/감독)을 검색합니다."
+    summary="검색",
+    description="영화와 인물을 검색합니다."
 )
 async def search_all(
     query: str = Query(description="검색할 키워드", min_length=1),
@@ -39,7 +39,7 @@ async def search_all(
         regex="^[a-z]{2}-[A-Z]{2}$"
     )
 ):
-    """통합 검색"""
+    """검색"""
     try:
         filtered_query = filter_korean_incomplete_chars(query)
         
