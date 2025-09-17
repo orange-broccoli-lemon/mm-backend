@@ -4,9 +4,10 @@ from sqlalchemy import Column, Integer, String, Text, Date, DECIMAL, Boolean, Da
 from sqlalchemy.sql import func
 from app.database import Base
 
+
 class MovieModel(Base):
     __tablename__ = "movies"
-    
+
     movie_id = Column(Integer, primary_key=True)
     title = Column(String(255), nullable=False)
     original_title = Column(String(255), nullable=True)
@@ -19,7 +20,9 @@ class MovieModel(Base):
     is_adult = Column(Boolean, default=False)
     trailer_url = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.current_timestamp())
-    updated_at = Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
-    
+    updated_at = Column(
+        DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
     def __repr__(self):
         return f"<MovieModel(movie_id={self.movie_id}, title='{self.title}')>"

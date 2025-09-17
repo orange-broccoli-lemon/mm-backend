@@ -17,18 +17,15 @@ engine = create_engine(
     DATABASE_URL,
     echo=True,  # SQL 로그 출력
     pool_pre_ping=True,  # 연결 상태 확인
-    pool_recycle=300  # 5분마다 연결 재사용
+    pool_recycle=300,  # 5분마다 연결 재사용
 )
 
 # 세션 팩토리 생성
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base 클래스 생성
 Base = declarative_base()
+
 
 # 의존성 주입용 함수
 def get_db():

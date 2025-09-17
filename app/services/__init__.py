@@ -5,9 +5,4 @@ from .movie_service import MovieService
 from .user_service import UserService
 from .comment_service import CommentService
 
-__all__ = [
-    "TMDBService",
-    "MovieService",
-    "UserService",
-    "CommentService"
-]
+__all__ = ["TMDBService", "MovieService", "UserService", "CommentService"]

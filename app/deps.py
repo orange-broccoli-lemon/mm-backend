@@ -1,11 +1,20 @@
 # app/deps.py
 
 import torch
-from transformers import MarianMTModel, MarianTokenizer, pipeline, BertTokenizer, BertForSequenceClassification, AutoTokenizer, AutoModelForSequenceClassification
+from transformers import (
+    MarianMTModel,
+    MarianTokenizer,
+    pipeline,
+    BertTokenizer,
+    BertForSequenceClassification,
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+)
 from openai import AsyncOpenAI
 import os
 import asyncio
 from typing import List
+
 # 로컬 경로로 변경
 mt_model_dir = "/app/huggingface_models/ko-en"
 zero_shot_model_dir = "/app/huggingface_models/zero-shot"
@@ -27,16 +36,17 @@ def ko_to_en(text):
 def spoiler_detect_zero_shot(text):
     candidate_labels = ["spoiler", "not spoiler"]
     result = classifier(text, candidate_labels)
-    if (result['labels'][0] == "spoiler"):
-        return { "is_spoiler" : 1, "spoiler_score" : result['scores'][0]}
-    
-    return { "is_spoiler" : 0, "spoiler_score" : result['scores'][1]}
+    if result["labels"][0] == "spoiler":
+        return {"is_spoiler": 1, "spoiler_score": result["scores"][0]}
+
+    return {"is_spoiler": 0, "spoiler_score": result["scores"][1]}
 
 
 def check_spoiler_ko(text_ko):
     eng_text = ko_to_en(text_ko)
     result_label = spoiler_detect_zero_shot(eng_text)
     return result_label
+
 
 em_model_dir = "/app/huggingface_models/naver_review_model/"
 
@@ -45,15 +55,16 @@ em_model = BertForSequenceClassification.from_pretrained(em_model_dir)
 
 em_model.eval()
 
+
 # 단일 텍스트 감정 분석 함수
 def check_emotion_ko(text_ko):
-    inputs = em_tokenizer(text_ko, return_tensors='pt', padding=True, truncation=True)
+    inputs = em_tokenizer(text_ko, return_tensors="pt", padding=True, truncation=True)
     with torch.no_grad():
         outputs = em_model(**inputs)
         logits = outputs.logits
     probabilities = torch.softmax(logits, dim=1)
     prediction = torch.argmax(probabilities, dim=1).item()
-    return { "is_positive" : prediction, "confidence" : probabilities[0][1].item()}
+    return {"is_positive": prediction, "confidence": probabilities[0][1].item()}
 
 
 # 모델명 혹은 로컬 경로
@@ -64,29 +75,29 @@ to_tokenizer = AutoTokenizer.from_pretrained(model_name)
 to_model = AutoModelForSequenceClassification.from_pretrained(model_name)
 to_model.eval()  # 평가 모드로 변경
 
+
 def detect_toxicity(text):
-    inputs = to_tokenizer(text, return_tensors='pt', padding=True, truncation=True)
+    inputs = to_tokenizer(text, return_tensors="pt", padding=True, truncation=True)
     with torch.no_grad():
         outputs = to_model(**inputs)
         logits = outputs.logits
     probabilities = torch.softmax(logits, dim=1)
     prediction = torch.argmax(probabilities, dim=1).item()
-    return { "is_toxic" : prediction, "confidence" : probabilities[0][1].item()}
-
-
+    return {"is_toxic": prediction, "confidence": probabilities[0][1].item()}
 
 
 # GMS(LLM Aggregator) API BASE_URL
 client = AsyncOpenAI(base_url="https://gms.ssafy.io/gmsapi/api.openai.com/v1")
 
+
 def findbot(user_content: str):
     async def inner():
         res_text = ""
         stream = await client.chat.completions.create(
-            model='gpt-4.1',
+            model="gpt-4.1",
             messages=[
                 {
-                    "role": "system", 
+                    "role": "system",
                     "content": """당신은 find bot이라는 이름의 긍정 에너지 가득한 영화 찾기 전문 AI입니다.
 
 **핵심 역할:**
@@ -125,9 +136,9 @@ def findbot(user_content: str):
 3. **📖 줄거리:** 
    - 해당 영화의 간단한 줄거리 (3-4줄 정도)
    - 사용자가 기억하는 내용이 맞는지 확인할 수 있는 수준으로 작성
-"""
+""",
                 },
-                {"role": "user", "content": user_content}
+                {"role": "user", "content": user_content},
             ],
             max_tokens=1024,
             stream=True,
@@ -138,9 +149,6 @@ def findbot(user_content: str):
         return res_text
 
     return asyncio.run(inner())
-
-
-
 
 
 # uvicorn app.main:app --reload
@@ -156,10 +164,10 @@ def concise_reviewbot(movie_title: str, reviews: List[str]):
 - 별점은 생략하고 핵심 코멘트만 제시"""
 
         stream = await client.chat.completions.create(
-            model='gpt-4.1',
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": "\\n".join(reviews)}
+                {"role": "user", "content": "\\n".join(reviews)},
             ],
             max_tokens=500,
             stream=True,
@@ -173,9 +181,6 @@ def concise_reviewbot(movie_title: str, reviews: List[str]):
     return asyncio.run(inner())
 
 
-
-
-
 def profile_reviewbot(reviewer_name: str, reviews: List[str]):
     """
     reviewer_name: 프로필을 요약할 사람 이름
@@ -186,6 +191,7 @@ def profile_reviewbot(reviewer_name: str, reviews: List[str]):
     - 각 리뷰의 주요 특징(긍정·부정·중립 키워드, 자주 언급하는 주제 등)을 종합
     - 프로필과 리뷰 요약(4~5문장)으로 응답
     """
+
     async def inner():
         prompt = f"""당신은 Review Profile Bot입니다.
 
@@ -199,11 +205,8 @@ def profile_reviewbot(reviewer_name: str, reviews: List[str]):
 
 위 항목을 포함해 4~5문장으로 요약해 주세요."""
         stream = await client.chat.completions.create(
-            model='gpt-4.1',
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": ""}
-            ],
+            model="gpt-4.1",
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": ""}],
             max_tokens=500,
             stream=True,
         )
