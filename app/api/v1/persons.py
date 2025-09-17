@@ -38,37 +38,37 @@ async def get_person_by_id(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post(
-    "/follow",
+    "/{person_id}/follow",
     response_model=PersonFollow,
     summary="인물 팔로우",
     description="특정 인물을 팔로우합니다."
 )
 async def follow_person(
-    follow_request: PersonFollowRequest,
+    person_id: int = Path(description="팔로우할 인물 ID"),
     current_user: User = Depends(get_current_user),
     person_service: PersonService = Depends(get_person_service)
 ):
     try:
-        follow = await person_service.follow_person(current_user.user_id, follow_request.person_id)
+        follow = await person_service.follow_person(current_user.user_id, person_id)
         return follow
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @router.delete(
-    "/follow/{person_id}",
+    "/{person_id}/follow",
     summary="인물 언팔로우",
     description="팔로우 중인 인물을 언팔로우합니다."
 )
 async def unfollow_person(
     person_id: int = Path(description="언팔로우할 인물 ID"),
-    current_user: User = Depends(   ),
+    current_user: User = Depends(get_current_user),
     person_service: PersonService = Depends(get_person_service)
 ):
     try:
         success = await person_service.unfollow_person(current_user.user_id, person_id)
         return {"message": "언팔로우가 완료되었습니다", "success": success}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @router.get(
     "/{person_id}/credits",

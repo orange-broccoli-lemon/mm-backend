@@ -85,18 +85,34 @@ async def delete_comment(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post(
-    "/{comment_id}/toggle-like",
+    "/{comment_id}/like",
     response_model=Comment,
-    summary="댓글 좋아요 토글",
-    description="댓글 좋아요를 추가하거나 취소합니다."
+    summary="댓글 좋아요",
+    description="댓글에 좋아요를 추가합니다."
 )
-async def toggle_like_comment(
+async def like_comment(
     comment_id: int = Path(description="댓글 ID"),
     current_user: User = Depends(get_current_user),
     comment_service: CommentService = Depends(get_comment_service)
 ):
     try:
-        comment = await comment_service.toggle_like_comment(comment_id, current_user.user_id)
+        comment = await comment_service.like_comment(comment_id, current_user.user_id)
         return comment
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.delete(
+    "/{comment_id}/like",
+    summary="댓글 좋아요 취소",
+    description="댓글 좋아요를 취소합니다."
+)
+async def unlike_comment(
+    comment_id: int = Path(description="댓글 ID"),
+    current_user: User = Depends(get_current_user),
+    comment_service: CommentService = Depends(get_comment_service)
+):
+    try:
+        comment = await comment_service.unlike_comment(comment_id, current_user.user_id)
+        return {"message": "좋아요 취소 완료", "success": True, "comment": comment}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
