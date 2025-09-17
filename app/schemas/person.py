@@ -5,10 +5,12 @@ from pydantic import BaseModel, Field
 from datetime import datetime, date
 from enum import IntEnum
 
+
 class Gender(IntEnum):
     UNKNOWN = 0
     FEMALE = 1
     MALE = 2
+
 
 class Person(BaseModel):
     person_id: int = Field(description="인물 ID")
@@ -27,25 +29,29 @@ class Person(BaseModel):
     followers_count: int = Field(default=0, description="팔로워 수")
     created_at: Optional[datetime] = Field(default=None, description="생성일시")
     updated_at: Optional[datetime] = Field(default=None, description="수정일시")
-    
+
     class Config:
         from_attributes = True
+
 
 class PersonFollow(BaseModel):
     user_id: int = Field(description="사용자 ID")
     person_id: int = Field(description="인물 ID")
     created_at: Optional[datetime] = Field(default=None, description="팔로우 시작일")
-    
+
     class Config:
         from_attributes = True
 
+
 class PersonFollowRequest(BaseModel):
     person_id: int = Field(description="팔로우할 인물 ID")
+
 
 class PersonStats(BaseModel):
     person_id: int = Field(description="인물 ID")
     followers_count: int = Field(description="팔로워 수")
     movies_count: int = Field(description="참여 영화 수")
+
 
 class MovieCredit(BaseModel):
     movie_id: int = Field(description="영화 ID")
@@ -57,11 +63,13 @@ class MovieCredit(BaseModel):
     department: Optional[str] = Field(default=None, description="부서")
     is_main_cast: bool = Field(default=False, description="주연 여부")
 
+
 class PersonCreditsResponse(BaseModel):
     person: Person = Field(description="인물 정보")
     acting_credits: List[MovieCredit] = Field(description="출연 작품")
     crew_credits: List[MovieCredit] = Field(description="스태프 참여 작품")
     total_movies: int = Field(description="총 참여 영화 수")
+
 
 class PersonFeedItem(BaseModel):
     movie_id: int = Field(description="영화 ID")
@@ -75,6 +83,7 @@ class PersonFeedItem(BaseModel):
     job: Optional[str] = Field(default=None, description="역할")
     is_main_cast: bool = Field(default=False, description="주연 여부")
     activity_type: str = Field(description="활동 타입", default="movie_credit")
+
 
 class PersonFeedResponse(BaseModel):
     items: List[PersonFeedItem] = Field(description="피드 아이템 목록")

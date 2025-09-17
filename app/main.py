@@ -6,7 +6,14 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
-from .deps import check_spoiler_ko, check_emotion_ko, detect_toxicity, findbot, concise_reviewbot, profile_reviewbot
+from .deps import (
+    check_spoiler_ko,
+    check_emotion_ko,
+    detect_toxicity,
+    findbot,
+    concise_reviewbot,
+    profile_reviewbot,
+)
 
 # 설정 로드
 settings = get_settings()
@@ -18,36 +25,35 @@ Base.metadata.create_all(bind=engine)
 # 프록시 경로에 맞춰 FastAPI 앱 생성
 app = FastAPI(
     title="mM",
-    description="Movie Community Service", 
+    description="Movie Community Service",
     version="1.0.0",
     docs_url="/docs",
     openapi_url="/openapi.json",
     root_path="/api",
-    servers=[{"url": "/api"}]
+    servers=[{"url": "/api"}],
 )
+
 
 # OpenAPI 스키마
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    
+
     openapi_schema = get_openapi(
         title="mM",
         version="1.0.0",
         openapi_version="3.0.2",
         description="Movie Community Service",
         routes=app.routes,
-        servers=[{"url": "/api"}]
+        servers=[{"url": "/api"}],
     )
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
+
 app.openapi = custom_openapi
 
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "https://i13m105.p.ssafy.io"
-]
+ALLOWED_ORIGINS = ["http://localhost:5173", "https://i13m105.p.ssafy.io"]
 
 # CORS 미들웨어
 app.add_middleware(
@@ -61,6 +67,7 @@ app.add_middleware(
 # API v1 라우터 등록
 app.include_router(api_router, prefix="/v1")
 
+
 @app.get("/")
 def read_root():
     """서비스 루트"""
@@ -68,29 +75,35 @@ def read_root():
         "service": "mM",
         "description": "Movie Community Service",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
     }
+
 
 @app.get("/spoilertest/{text}")
 def read_root(text: str):
     return check_spoiler_ko(text)
 
+
 @app.get("/emotiontest/{text}")
 def read_root(text: str):
     return check_emotion_ko(text)
+
 
 @app.get("/toxictest/{text}")
 def read_root(text: str):
     return detect_toxicity(text)
 
+
 @app.get("/findbottest/{text}")
 def read_root(text: str):
     return findbot(text)
+
 
 @app.get("/concisebot/{text}/{review}")
 def read_root(text: str, review: str):
     return concise_reviewbot(text, [review])
 
+
 @app.get("/profilebot/{text}/{review}")
-def read_root(text: str, review:str):
+def read_root(text: str, review: str):
     return profile_reviewbot(text, [review])

@@ -1,0 +1,19 @@
+{
+  "editor.formatOnSave": true,
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  "black-formatter.importStrategy": "fromEnvironment",
+  "black-formatter.args": ["--config", "${workspaceFolder}/pyproject.toml"],
+
+  "isort.importStrategy": "fromEnvironment",
+  "isort.args": ["--profile", "black", "--settings-path", "${workspaceFolder}/pyproject.toml"],
+
+  "python.analysis.typeCheckingMode": "basic"
+}

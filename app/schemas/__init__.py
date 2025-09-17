@@ -2,10 +2,22 @@
 
 from .movie import Movie
 from .user import (
-    User, UserCreateEmail, UserCreateGoogle, 
-    UserLoginEmail, UserLoginGoogle, EmailCheck, TokenResponse
+    User,
+    UserCreateEmail,
+    UserCreateGoogle,
+    UserLoginEmail,
+    UserLoginGoogle,
+    EmailCheck,
+    TokenResponse,
 )
-from .person import Person, PersonFollow, PersonFollowRequest, PersonStats, PersonCreditsResponse, PersonFeedResponse
+from .person import (
+    Person,
+    PersonFollow,
+    PersonFollowRequest,
+    PersonStats,
+    PersonCreditsResponse,
+    PersonFeedResponse,
+)
 from .user_movie import UserMovie, WatchStatus
 from .comment import Comment, CommentCreate, CommentUpdate
 from .movie_cast import MovieCast, CastRole
@@ -16,7 +28,7 @@ __all__ = [
     "Movie",
     "User",
     "UserCreateEmail",
-    "UserCreateGoogle", 
+    "UserCreateGoogle",
     "UserLoginEmail",
     "UserLoginGoogle",
     "EmailCheck",
@@ -27,9 +39,9 @@ __all__ = [
     "Comment",
     "MovieCast",
     "CastRole",
-    "MovieSearchResult", 
-    "PersonSearchResult", 
-    "SearchResult", 
+    "MovieSearchResult",
+    "PersonSearchResult",
+    "SearchResult",
     "SearchResponse",
     "Genre",
     "GenreListResponse",
