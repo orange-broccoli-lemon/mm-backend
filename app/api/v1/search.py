@@ -4,10 +4,11 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 from app.schemas import SearchResponse
 from app.services.tmdb_service import TMDBService
+from app.services.user_service import UserService
 
 router = APIRouter()
 tmdb_service = TMDBService()
-
+user_service = UserService()
 
 def filter_korean_incomplete_chars(text: str) -> str:
     """한국어 미완성 문자를 필터링하고 완성된 문자만 남김"""
@@ -53,6 +54,9 @@ async def search_all(
             )
 
         search_results = await tmdb_service.multi_search(query=filtered_query, language=language)
+        # 사용자 이름(예: 부분 일치 검색)도 함께 검색
+        user_results = await user_service.search_users_by_name(name=filtered_query)
+        
         return SearchResponse(results=search_results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"검색에 실패했습니다: {str(e)}")
