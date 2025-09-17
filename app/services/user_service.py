@@ -1,8 +1,8 @@
 # app/services/user_service.py
 
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from app.models.user import UserModel
 from app.models.user_follow import UserFollowModel
 from app.models.person_follow import PersonFollowModel
@@ -26,6 +26,7 @@ from app.schemas.user import (
 )
 from app.schemas.movie import WatchlistMovie
 from app.schemas.comment import CommentWithMovie
+from app.schemas.search import UserSearchResult
 from app.database import get_db
 from app.core.auth import get_password_hash, verify_password
 
@@ -572,6 +573,25 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"전체 사용자 조회 실패: {str(e)}")
+        
+    async def search_users_by_name(self, name: str) -> Optional[List[UserSearchResult]]:
+        try:
+            stmt = (
+                select(UserModel)
+                .where(UserModel.name.ilike(f"%{name}%"))
+                .order_by(
+                    case(
+                        (UserModel.name.ilike(f"{name}%"), 0),
+                        else_=1
+                    ),
+                    UserModel.name
+                )
+            )
+            result = self.db.execute(stmt)
+            return [UserSearchResult.from_orm(user_model) for user_model in result.scalars().all()]
+        except Exception as e:
+            raise Exception(f"사용자 조회 실패: {str(e)}")
+        
 
     def __del__(self):
         if hasattr(self, "db"):
