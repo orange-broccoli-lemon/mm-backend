@@ -25,9 +25,19 @@ class PersonSearchResult(BaseModel):
     name: str = Field(description="인물 이름")
     profile_path: Optional[str] = Field(default=None, description="프로필 이미지 경로")
 
+class UserSearchResult(BaseModel):
+    user_id: Optional[int] = Field(default=None, description="사용자 ID")
+    google_id: Optional[str] = Field(default=None, description="구글 ID")
+    email: str = Field(description="이메일")
+    name: str = Field(description="사용자 이름")
+    profile_image_url: Optional[str] = Field(default=None, description="프로필 이미지 URL")
+    is_active: bool = Field(default=True, description="활성 상태")
+
+    class Config:
+        from_attributes = True
 
 # 검색 결과 타입
-SearchResult = Union[MovieSearchResult, PersonSearchResult]
+SearchResult = Union[MovieSearchResult, PersonSearchResult, UserSearchResult]
 
 
 class SearchResponse(BaseModel):
