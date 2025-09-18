@@ -195,6 +195,8 @@ class UserService:
                 "profile_image_url": user_model.profile_image_url,
                 "created_at": user_model.created_at,
                 "is_active": user_model.is_active,
+                "profile_review": user_model.profile_review,
+                "profile_review_date": user_model.profile_review_date,
             }
 
             # 본인만 볼 수 있는 정보
@@ -289,6 +291,38 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"사용자 댓글 조회 실패: {str(e)}")
+
+    async def update_user_profile_review(self, user_id: int, profile_review: str) -> bool:
+        """사용자 프로필 분석 결과 업데이트"""
+        try:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = self.db.execute(stmt).scalar_one_or_none()
+
+            if not user_model:
+                return False
+
+            from datetime import datetime
+
+            user_model.profile_review = profile_review
+            user_model.profile_review_date = datetime.utcnow()
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"프로필 분석 업데이트 실패: {str(e)}")
+            return False
+
+    async def get_all_active_users(self) -> List[User]:
+        """모든 활성 사용자 조회"""
+        try:
+            stmt = select(UserModel).where(UserModel.is_active == True)
+            result = self.db.execute(stmt)
+            return [User.from_orm(user_model) for user_model in result.scalars()]
+
+        except Exception as e:
+            raise Exception(f"활성 사용자 조회 실패: {str(e)}")
 
     async def _get_counts(self, user_id: int) -> dict:
         """모든 통계 정보를 한 번에 조회"""
@@ -573,25 +607,18 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"전체 사용자 조회 실패: {str(e)}")
-        
+
     async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
         try:
             stmt = (
                 select(UserModel)
                 .where(UserModel.name.ilike(f"%{name}%"))
-                .order_by(
-                    case(
-                        (UserModel.name.ilike(f"{name}%"), 0),
-                        else_=1
-                    ),
-                    UserModel.name
-                )
+                .order_by(case((UserModel.name.ilike(f"{name}%"), 0), else_=1), UserModel.name)
             )
             result = self.db.execute(stmt)
             return [UserSearchResult.from_orm(user_model) for user_model in result.scalars().all()]
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
-        
 
     def __del__(self):
         if hasattr(self, "db"):
