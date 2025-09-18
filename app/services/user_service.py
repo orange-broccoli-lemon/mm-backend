@@ -17,20 +17,13 @@ from app.schemas.user import (
     UserDetail,
     UserCreateEmail,
     UserCreateGoogle,
-    UserLoginEmail,
-    UserLoginGoogle,
-    UserComment,
-    UserFollower,
-    UserFollowing,
     UserFollowingPerson,
 )
-from app.schemas.movie import WatchlistMovie
 from app.schemas.comment import CommentWithMovie
 from app.schemas.search import UserSearchResult
 from app.database import get_db
 from app.core.auth import get_password_hash, verify_password
 from fastapi import UploadFile
-import os
 import uuid
 from pathlib import Path
 
@@ -318,15 +311,15 @@ class UserService:
             print(f"프로필 분석 업데이트 실패: {str(e)}")
             return False
 
-    async def get_all_active_users(self) -> List[User]:
-        """모든 활성 사용자 조회"""
+    async def get_all_users(self) -> list[User]:
+        """DB 전체 사용자 조회"""
         try:
-            stmt = select(UserModel).where(UserModel.is_active == True)
+            stmt = select(UserModel)
             result = self.db.execute(stmt)
             return [User.from_orm(user_model) for user_model in result.scalars()]
 
         except Exception as e:
-            raise Exception(f"활성 사용자 조회 실패: {str(e)}")
+            raise Exception(f"전체 사용자 조회 실패: {str(e)}")
 
     async def _get_counts(self, user_id: int) -> dict:
         """모든 통계 정보를 한 번에 조회"""
@@ -401,66 +394,6 @@ class UserService:
                 "watchlist_count": 0,
             }
 
-    async def _get_followers_list(self, user_id: int, limit: int) -> list[UserFollower]:
-        """팔로워 목록"""
-        try:
-            stmt = (
-                select(
-                    UserModel.user_id,
-                    UserModel.name,
-                    UserModel.profile_image_url,
-                    UserFollowModel.created_at,
-                )
-                .join(UserFollowModel, UserModel.user_id == UserFollowModel.follower_id)
-                .where(UserFollowModel.following_id == user_id)
-                .order_by(UserFollowModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserFollower(
-                    user_id=row.user_id,
-                    name=row.name,
-                    profile_image_url=row.profile_image_url,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_following_list(self, user_id: int, limit: int) -> list[UserFollowing]:
-        """팔로잉 목록"""
-        try:
-            stmt = (
-                select(
-                    UserModel.user_id,
-                    UserModel.name,
-                    UserModel.profile_image_url,
-                    UserFollowModel.created_at,
-                )
-                .join(UserFollowModel, UserModel.user_id == UserFollowModel.following_id)
-                .where(UserFollowModel.follower_id == user_id)
-                .order_by(UserFollowModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserFollowing(
-                    user_id=row.user_id,
-                    name=row.name,
-                    profile_image_url=row.profile_image_url,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
     async def get_following_persons_list(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> List[UserFollowingPerson]:
@@ -504,125 +437,6 @@ class UserService:
             return self.db.execute(stmt).scalar() or 0
         except Exception:
             return 0
-
-    async def _get_recent_comments(self, user_id: int, limit: int) -> list[UserComment]:
-        """최근 코멘트 목록"""
-        try:
-            stmt = (
-                select(
-                    CommentModel.comment_id,
-                    CommentModel.movie_id,
-                    CommentModel.content,
-                    CommentModel.is_spoiler,
-                    CommentModel.created_at,
-                    func.count(CommentLikeModel.comment_id).label("likes_count"),
-                )
-                .outerjoin(CommentLikeModel, CommentModel.comment_id == CommentLikeModel.comment_id)
-                .where(CommentModel.user_id == user_id)
-                .group_by(
-                    CommentModel.comment_id,
-                    CommentModel.movie_id,
-                    CommentModel.content,
-                    CommentModel.is_spoiler,
-                    CommentModel.created_at,
-                )
-                .order_by(CommentModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserComment(
-                    comment_id=row.comment_id,
-                    movie_id=row.movie_id,
-                    content=row.content,
-                    is_spoiler=row.is_spoiler,
-                    likes_count=row.likes_count,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_liked_movies(self, user_id: int, limit: int) -> list[WatchlistMovie]:
-        """좋아요한 영화 목록"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    MovieLikeModel.created_at,
-                )
-                .join(MovieLikeModel, MovieModel.movie_id == MovieLikeModel.movie_id)
-                .where(MovieLikeModel.user_id == user_id)
-                .order_by(MovieLikeModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_watchlist_movies(self, user_id: int, limit: int) -> list[WatchlistMovie]:
-        """왓치리스트 영화 목록"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    WatchlistModel.created_at,
-                )
-                .join(WatchlistModel, MovieModel.movie_id == WatchlistModel.movie_id)
-                .where(WatchlistModel.user_id == user_id)
-                .order_by(WatchlistModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def get_all_users(self) -> list[User]:
-        """개발용 - DB 전체 사용자 조회"""
-        try:
-            stmt = select(UserModel)
-            result = self.db.execute(stmt)
-            return [User.from_orm(user_model) for user_model in result.scalars()]
-
-        except Exception as e:
-            raise Exception(f"전체 사용자 조회 실패: {str(e)}")
 
     async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
         try:

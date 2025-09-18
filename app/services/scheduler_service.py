@@ -21,7 +21,7 @@ class SchedulerService:
 
         try:
             # 1. 모든 활성 사용자 조회
-            users = await user_service.get_all_active_users()
+            users = await user_service.get_all_users()
             print(f"분석 대상 사용자 수: {len(users)}")
 
             analysis_count = 0
