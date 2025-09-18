@@ -7,7 +7,6 @@ from app.schemas.user import (
     UserCreateEmail,
     UserCreateGoogle,
     UserLoginEmail,
-    UserLoginGoogle,
     EmailCheck,
     TokenResponse,
 )
