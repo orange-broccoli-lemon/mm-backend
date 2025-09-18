@@ -9,6 +9,8 @@ from app.database import engine, Base
 import asyncio
 from contextlib import asynccontextmanager
 from app.services.scheduler_service import SchedulerService
+from fastapi.staticfiles import StaticFiles
+
 
 # 설정 로드
 settings = get_settings()
@@ -51,6 +53,8 @@ app = FastAPI(
     servers=[{"url": "/api"}],
     lifespan=lifespan,
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # OpenAPI 스키마

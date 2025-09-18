@@ -29,6 +29,10 @@ from app.schemas.comment import CommentWithMovie
 from app.schemas.search import UserSearchResult
 from app.database import get_db
 from app.core.auth import get_password_hash, verify_password
+from fastapi import UploadFile
+import os
+import uuid
+from pathlib import Path
 
 
 class UserService:
@@ -174,7 +178,7 @@ class UserService:
     async def get_user_detail(
         self, user_id: int, current_user: Optional[User] = None
     ) -> Optional[UserDetail]:
-        """사용자 상세 정보 조회 - 통계만 포함"""
+        """사용자 상세 정보 조회"""
         try:
             print(f"사용자 상세 조회: {user_id}")
 
@@ -221,7 +225,7 @@ class UserService:
     async def get_user_comments_with_movies(
         self, user_id: int, limit: int = 20, offset: int = 0, include_private: bool = False
     ) -> list[CommentWithMovie]:
-        """사용자 댓글 목록 조회 (영화 정보 포함)"""
+        """사용자 댓글 목록 조회"""
         try:
             stmt = (
                 select(
@@ -460,7 +464,7 @@ class UserService:
     async def get_following_persons_list(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> List[UserFollowingPerson]:
-        """팔로우 중인 인물 목록 (페이지네이션 지원)"""
+        """팔로우 중인 인물 목록"""
         try:
             stmt = (
                 select(
@@ -473,7 +477,7 @@ class UserService:
                 .where(PersonFollowModel.user_id == user_id)
                 .order_by(PersonFollowModel.created_at.desc())
                 .limit(limit)
-                .offset(offset)  # 오프셋 추가
+                .offset(offset)
             )
 
             result = self.db.execute(stmt)
@@ -657,6 +661,105 @@ class UserService:
         except Exception as e:
             print(f"댓글 있는 사용자 조회 실패: {str(e)}")
             return []
+
+    async def update_user_profile(
+        self, user_id: int, update_data: dict, profile_image_url: Optional[UploadFile] = None
+    ) -> tuple[User, List[str]]:
+        """사용자 프로필 업데이트"""
+        try:
+            # 사용자 조회
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = self.db.execute(stmt).scalar_one_or_none()
+
+            if not user_model:
+                raise Exception("사용자를 찾을 수 없습니다")
+
+            # Google 계정인 경우 비밀번호 변경 제한
+            if user_model.google_id and "password" in update_data:
+                raise Exception("Google 계정은 비밀번호를 변경할 수 없습니다")
+
+            updated_fields = []
+
+            # 이름 업데이트
+            if "name" in update_data and update_data["name"]:
+                user_model.name = update_data["name"]
+                updated_fields.append("name")
+
+            # 비밀번호 업데이트
+            if "password" in update_data and update_data["password"]:
+                user_model.password_hash = get_password_hash(update_data["password"])
+                updated_fields.append("password")
+
+            # 프로필 이미지 업데이트
+            if profile_image_url:
+                image_url = await self._save_profile_image(user_id, profile_image_url)
+                user_model.profile_image_url = image_url
+                updated_fields.append("profile_image_url")
+
+            if not updated_fields:
+                raise Exception("수정할 정보가 없습니다")
+
+            # 업데이트 시간 갱신
+            from datetime import datetime
+
+            user_model.updated_at = datetime.utcnow()
+
+            self.db.commit()
+            self.db.refresh(user_model)
+
+            return User.from_orm(user_model), updated_fields
+
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"프로필 업데이트 실패: {str(e)}")
+
+    async def _save_profile_image(self, user_id: int, image_file: UploadFile) -> str:
+        """프로필 이미지 파일 저장"""
+        try:
+            # 파일 유효성 검사
+            if not image_file.content_type or not image_file.content_type.startswith("image/"):
+                raise Exception("이미지 파일만 업로드 가능합니다")
+
+            # 파일 크기 제한 (5MB)
+            max_size = 5 * 1024 * 1024  # 5MB
+            content = await image_file.read()
+            if len(content) > max_size:
+                raise Exception("파일 크기는 5MB를 초과할 수 없습니다")
+
+            # 저장 디렉토리 생성
+            upload_dir = Path("static/profile_images")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+
+            # 고유한 파일명 생성
+            file_extension = (
+                image_file.filename.split(".")[-1] if "." in image_file.filename else "jpg"
+            )
+            unique_filename = f"{user_id}_{uuid.uuid4().hex}.{file_extension}"
+            file_path = upload_dir / unique_filename
+
+            # 파일 저장
+            with open(file_path, "wb") as buffer:
+                buffer.write(content)
+
+            # URL 반환
+            return f"/static/profile_images/{unique_filename}"
+
+        except Exception as e:
+            raise Exception(f"이미지 저장 실패: {str(e)}")
+
+    async def verify_current_password(self, user_id: int, password: str) -> bool:
+        """현재 비밀번호 확인"""
+        try:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = self.db.execute(stmt).scalar_one_or_none()
+
+            if not user_model or user_model.google_id:
+                return False
+
+            return verify_password(password, user_model.password_hash)
+
+        except Exception:
+            return False
 
     def __del__(self):
         if hasattr(self, "db"):
