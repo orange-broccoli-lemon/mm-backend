@@ -24,7 +24,7 @@ async def get_movie_recommendations(
     """개인화된 영화 추천"""
     try:
         recommendations = await recommendation_service.get_movie_recommendations(
-            user_id=current_user.user_id, min_rating=1.0
+            user_id=current_user.user_id
         )
 
         return {"user_id": current_user.user_id, "recommendations": recommendations}
