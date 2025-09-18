@@ -10,18 +10,23 @@ from app.models.user_follow import UserFollowModel
 from app.models.user import UserModel
 from app.models.movie import MovieModel
 from app.schemas.feed import FeedComment, FeedResponse, FeedFilter
-from app.database import get_db
+from app.database import SessionLocal
 
 
 class FeedService:
 
     def __init__(self):
-        self.db: Session = next(get_db())
+        pass
+
+    def _get_db(self) -> Session:
+        """데이터베이스 세션 생성"""
+        return SessionLocal()
 
     async def get_user_feed(
         self, user_id: int, skip: int = 0, limit: int = 20, feed_filter: Optional[FeedFilter] = None
     ) -> FeedResponse:
         """사용자의 피드 조회"""
+        db = self._get_db()
         try:
             # 기본 필터 설정
             if feed_filter is None:
@@ -31,7 +36,7 @@ class FeedService:
             following_stmt = select(UserFollowModel.following_id).where(
                 UserFollowModel.follower_id == user_id
             )
-            following_result = self.db.execute(following_stmt)
+            following_result = db.execute(following_stmt)
             following_ids = [row[0] for row in following_result.fetchall()]
 
             if not following_ids:
@@ -90,7 +95,7 @@ class FeedService:
             # 정렬 및 페이징
             query = base_query.order_by(desc(CommentModel.created_at)).offset(skip).limit(limit + 1)
 
-            result = self.db.execute(query)
+            result = db.execute(query)
             rows = result.fetchall()
 
             # 다음 페이지 존재 여부 확인
@@ -98,11 +103,24 @@ class FeedService:
             if has_next:
                 rows = rows[:-1]  # 마지막 항목 제거
 
+            # 현재 사용자의 좋아요 정보 일괄 조회
+            comment_ids = [row.comment_id for row in rows]
+            liked_comment_ids = set()
+
+            if comment_ids:
+                liked_stmt = select(CommentLikeModel.comment_id).where(
+                    and_(
+                        CommentLikeModel.user_id == user_id,
+                        CommentLikeModel.comment_id.in_(comment_ids),
+                    )
+                )
+                liked_result = db.execute(liked_stmt).fetchall()
+                liked_comment_ids = {row[0] for row in liked_result}
+
             # FeedComment 객체 생성
             feed_comments = []
             for row in rows:
-                # 현재 사용자가 이 댓글을 좋아요했는지 확인
-                is_liked = await self._is_comment_liked_by_user(row.comment_id, user_id)
+                is_liked = row.comment_id in liked_comment_ids
 
                 feed_comment = FeedComment(
                     comment_id=row.comment_id,
@@ -138,18 +156,21 @@ class FeedService:
                 date_threshold = datetime.utcnow() - timedelta(days=feed_filter.days_ago)
                 total_query = total_query.where(CommentModel.created_at >= date_threshold)
 
-            total_result = self.db.execute(total_query)
+            total_result = db.execute(total_query)
             total = total_result.scalar() or 0
 
             return FeedResponse(comments=feed_comments, total=total, has_next=has_next)
 
         except Exception as e:
             raise Exception(f"피드 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def get_trending_feed(
         self, user_id: int, skip: int = 0, limit: int = 20, hours_ago: int = 24
     ) -> FeedResponse:
         """인기 댓글 피드 (좋아요가 많은 순)"""
+        db = self._get_db()
         try:
             # 시간 임계값 설정
             time_threshold = datetime.utcnow() - timedelta(hours=hours_ago)
@@ -197,7 +218,7 @@ class FeedService:
                 .limit(limit + 1)
             )
 
-            result = self.db.execute(query)
+            result = db.execute(query)
             rows = result.fetchall()
 
             # 다음 페이지 존재 여부 확인
@@ -205,10 +226,24 @@ class FeedService:
             if has_next:
                 rows = rows[:-1]
 
+            # 현재 사용자의 좋아요 정보 일괄 조회
+            comment_ids = [row.comment_id for row in rows]
+            liked_comment_ids = set()
+
+            if comment_ids:
+                liked_stmt = select(CommentLikeModel.comment_id).where(
+                    and_(
+                        CommentLikeModel.user_id == user_id,
+                        CommentLikeModel.comment_id.in_(comment_ids),
+                    )
+                )
+                liked_result = db.execute(liked_stmt).fetchall()
+                liked_comment_ids = {row[0] for row in liked_result}
+
             # FeedComment 객체 생성
             feed_comments = []
             for row in rows:
-                is_liked = await self._is_comment_liked_by_user(row.comment_id, user_id)
+                is_liked = row.comment_id in liked_comment_ids
 
                 feed_comment = FeedComment(
                     comment_id=row.comment_id,
@@ -234,25 +269,12 @@ class FeedService:
             total_query = select(func.count(CommentModel.comment_id)).where(
                 CommentModel.created_at >= time_threshold
             )
-            total_result = self.db.execute(total_query)
+            total_result = db.execute(total_query)
             total = total_result.scalar() or 0
 
             return FeedResponse(comments=feed_comments, total=total, has_next=has_next)
 
         except Exception as e:
             raise Exception(f"트렌딩 피드 조회 실패: {str(e)}")
-
-    async def _is_comment_liked_by_user(self, comment_id: int, user_id: int) -> bool:
-        """사용자가 댓글을 좋아요했는지 확인"""
-        try:
-            stmt = select(CommentLikeModel).where(
-                and_(CommentLikeModel.comment_id == comment_id, CommentLikeModel.user_id == user_id)
-            )
-            result = self.db.execute(stmt)
-            return result.scalar_one_or_none() is not None
-        except Exception:
-            return False
-
-    def __del__(self):
-        if hasattr(self, "db"):
-            self.db.close()
+        finally:
+            db.close()

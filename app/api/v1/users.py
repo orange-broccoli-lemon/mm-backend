@@ -9,7 +9,6 @@ from app.database import get_db
 from app.core.dependencies import get_current_user, get_optional_current_user
 from app.schemas.movie import WatchlistMovie
 from app.services.movie_service import MovieService
-from app.services.comment_service import CommentService
 from app.schemas.comment import CommentWithMovie
 from app.services.user_follow_service import UserFollowService
 from app.schemas.user_follow import UserFollow, FollowListResponse
@@ -154,7 +153,6 @@ async def get_user_comments(
     db: Session = Depends(get_db),
 ):
     """사용자 댓글 목록 조회"""
-    comment_service = CommentService()
 
     try:
         # 사용자 존재 확인

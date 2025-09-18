@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, and_
 from app.models.user import UserModel
 from app.models.user_follow import UserFollowModel
 from app.models.person_follow import PersonFollowModel
@@ -17,20 +17,13 @@ from app.schemas.user import (
     UserDetail,
     UserCreateEmail,
     UserCreateGoogle,
-    UserLoginEmail,
-    UserLoginGoogle,
-    UserComment,
-    UserFollower,
-    UserFollowing,
     UserFollowingPerson,
 )
-from app.schemas.movie import WatchlistMovie
 from app.schemas.comment import CommentWithMovie
 from app.schemas.search import UserSearchResult
-from app.database import get_db
+from app.database import SessionLocal
 from app.core.auth import get_password_hash, verify_password
 from fastapi import UploadFile
-import os
 import uuid
 from pathlib import Path
 
@@ -38,46 +31,60 @@ from pathlib import Path
 class UserService:
 
     def __init__(self):
-        self.db: Session = next(get_db())
+        pass
+
+    def _get_db(self) -> Session:
+        """데이터베이스 세션 생성"""
+        return SessionLocal()
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
+        db = self._get_db()
         try:
             stmt = select(UserModel).where(UserModel.email == email)
-            result = self.db.execute(stmt)
+            result = db.execute(stmt)
             user_model = result.scalar_one_or_none()
 
             return User.from_orm(user_model) if user_model else None
 
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def get_user_by_google_id(self, google_id: str) -> Optional[User]:
+        db = self._get_db()
         try:
             stmt = select(UserModel).where(UserModel.google_id == google_id)
-            result = self.db.execute(stmt)
+            result = db.execute(stmt)
             user_model = result.scalar_one_or_none()
 
             return User.from_orm(user_model) if user_model else None
 
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """ID로 사용자 기본 정보 조회"""
+        db = self._get_db()
         try:
             stmt = select(UserModel).where(UserModel.user_id == user_id)
-            result = self.db.execute(stmt)
+            result = db.execute(stmt)
             user_model = result.scalar_one_or_none()
 
             return User.from_orm(user_model) if user_model else None
 
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def create_user_email(self, user_data: UserCreateEmail) -> User:
+        db = self._get_db()
         try:
             # 이메일 중복 체크
-            if await self.get_user_by_email(user_data.email):
+            if await self._check_user_by_email(user_data.email, db):
                 raise Exception("이미 등록된 이메일입니다")
 
             # 사용자 생성
@@ -89,23 +96,26 @@ class UserService:
                 profile_image_url=user_data.profile_image_url,
             )
 
-            self.db.add(user_model)
-            self.db.commit()
-            self.db.refresh(user_model)
+            db.add(user_model)
+            db.commit()
+            db.refresh(user_model)
 
             return User.from_orm(user_model)
 
         except Exception as e:
-            self.db.rollback()
+            db.rollback()
             raise Exception(f"이메일 회원가입 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def create_user_google(self, user_data: UserCreateGoogle) -> User:
+        db = self._get_db()
         try:
             # 중복 체크
-            if await self.get_user_by_email(user_data.email):
+            if await self._check_user_by_email(user_data.email, db):
                 raise Exception("이미 등록된 이메일입니다")
 
-            if await self.get_user_by_google_id(user_data.google_id):
+            if await self._check_user_by_google_id(user_data.google_id, db):
                 raise Exception("이미 등록된 Google 계정입니다")
 
             # 사용자 생성
@@ -117,20 +127,23 @@ class UserService:
                 profile_image_url=user_data.profile_image_url,
             )
 
-            self.db.add(user_model)
-            self.db.commit()
-            self.db.refresh(user_model)
+            db.add(user_model)
+            db.commit()
+            db.refresh(user_model)
 
             return User.from_orm(user_model)
 
         except Exception as e:
-            self.db.rollback()
+            db.rollback()
             raise Exception(f"Google 회원가입 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def authenticate_user_email(self, email: str, password: str) -> Optional[User]:
+        db = self._get_db()
         try:
             stmt = select(UserModel).where(UserModel.email == email)
-            user_model = self.db.execute(stmt).scalar_one_or_none()
+            user_model = db.execute(stmt).scalar_one_or_none()
 
             if (
                 not user_model
@@ -143,48 +156,51 @@ class UserService:
             from datetime import datetime
 
             user_model.last_login = datetime.utcnow()
-            self.db.commit()
+            db.commit()
 
             return User.from_orm(user_model)
 
         except Exception as e:
             raise Exception(f"이메일 로그인 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def authenticate_user_google(self, email: str, google_id: str) -> Optional[User]:
+        db = self._get_db()
         try:
-            user = await self.get_user_by_google_id(google_id)
-            if user and user.email == email:
+            # Google ID로 사용자 조회
+            stmt = select(UserModel).where(UserModel.google_id == google_id)
+            user_model = db.execute(stmt).scalar_one_or_none()
+
+            if user_model and user_model.email == email:
                 # 마지막 로그인 시간 업데이트
-                stmt = select(UserModel).where(UserModel.google_id == google_id)
-                user_model = self.db.execute(stmt).scalar_one_or_none()
+                from datetime import datetime
 
-                if user_model:
-                    from datetime import datetime
+                user_model.last_login = datetime.utcnow()
+                db.commit()
 
-                    user_model.last_login = datetime.utcnow()
-                    self.db.commit()
+                return User.from_orm(user_model)
 
-                return user
             return None
 
         except Exception as e:
             raise Exception(f"Google 로그인 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def check_email_exists(self, email: str) -> bool:
         user = await self.get_user_by_email(email)
         return user is not None
 
-    # 사용자 상세 정보
     async def get_user_detail(
         self, user_id: int, current_user: Optional[User] = None
     ) -> Optional[UserDetail]:
         """사용자 상세 정보 조회"""
+        db = self._get_db()
         try:
-            print(f"사용자 상세 조회: {user_id}")
-
             # 1. 기본 사용자 정보 조회
             stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_model = self.db.execute(stmt).scalar_one_or_none()
+            user_model = db.execute(stmt).scalar_one_or_none()
 
             if not user_model:
                 return None
@@ -212,20 +228,22 @@ class UserService:
                     }
                 )
 
-            # 4. 통계 정보만 조회
-            counts = await self._get_counts(user_id)
+            # 4. 통계 정보 조회
+            counts = await self._get_counts_with_db(user_id, db)
             user_data.update(counts)
 
             return UserDetail(**user_data)
 
         except Exception as e:
-            print(f"사용자 상세 조회 실패: {str(e)}")
             raise Exception(f"사용자 상세 정보 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def get_user_comments_with_movies(
         self, user_id: int, limit: int = 20, offset: int = 0, include_private: bool = False
     ) -> list[CommentWithMovie]:
         """사용자 댓글 목록 조회"""
+        db = self._get_db()
         try:
             stmt = (
                 select(
@@ -270,7 +288,7 @@ class UserService:
                 .offset(offset)
             )
 
-            result = self.db.execute(stmt)
+            result = db.execute(stmt)
             comments = []
 
             for row in result:
@@ -295,12 +313,15 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"사용자 댓글 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def update_user_profile_review(self, user_id: int, profile_review: str) -> bool:
         """사용자 프로필 분석 결과 업데이트"""
+        db = self._get_db()
         try:
             stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_model = self.db.execute(stmt).scalar_one_or_none()
+            user_model = db.execute(stmt).scalar_one_or_none()
 
             if not user_model:
                 return False
@@ -310,25 +331,204 @@ class UserService:
             user_model.profile_review = profile_review
             user_model.profile_review_date = datetime.utcnow()
 
-            self.db.commit()
+            db.commit()
             return True
 
         except Exception as e:
-            self.db.rollback()
-            print(f"프로필 분석 업데이트 실패: {str(e)}")
+            db.rollback()
             return False
+        finally:
+            db.close()
 
-    async def get_all_active_users(self) -> List[User]:
-        """모든 활성 사용자 조회"""
+    async def get_all_users(self) -> list[User]:
+        """DB 전체 사용자 조회"""
+        db = self._get_db()
         try:
-            stmt = select(UserModel).where(UserModel.is_active == True)
-            result = self.db.execute(stmt)
+            stmt = select(UserModel)
+            result = db.execute(stmt)
             return [User.from_orm(user_model) for user_model in result.scalars()]
 
         except Exception as e:
-            raise Exception(f"활성 사용자 조회 실패: {str(e)}")
+            raise Exception(f"전체 사용자 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
-    async def _get_counts(self, user_id: int) -> dict:
+    async def get_following_persons_list(
+        self, user_id: int, limit: int = 20, offset: int = 0
+    ) -> List[UserFollowingPerson]:
+        """팔로우 중인 인물 목록"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(
+                    PersonModel.person_id,
+                    PersonModel.name,
+                    PersonModel.profile_image_url,
+                    PersonFollowModel.created_at,
+                )
+                .join(PersonFollowModel, PersonModel.person_id == PersonFollowModel.person_id)
+                .where(PersonFollowModel.user_id == user_id)
+                .order_by(PersonFollowModel.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+
+            result = db.execute(stmt)
+            return [
+                UserFollowingPerson(
+                    person_id=row.person_id,
+                    name=row.name,
+                    profile_image_url=row.profile_image_url,
+                    created_at=row.created_at,
+                )
+                for row in result
+            ]
+
+        except Exception as e:
+            return []
+        finally:
+            db.close()
+
+    async def get_following_persons_count(self, user_id: int) -> int:
+        """팔로우 중인 인물 총 개수"""
+        db = self._get_db()
+        try:
+            stmt = select(func.count(PersonFollowModel.person_id)).where(
+                PersonFollowModel.user_id == user_id
+            )
+            return db.execute(stmt).scalar() or 0
+        except Exception:
+            return 0
+        finally:
+            db.close()
+
+    async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
+        db = self._get_db()
+        try:
+            stmt = (
+                select(UserModel)
+                .where(UserModel.name.ilike(f"%{name}%"))
+                .order_by(case((UserModel.name.ilike(f"{name}%"), 0), else_=1), UserModel.name)
+            )
+            result = db.execute(stmt)
+            return [UserSearchResult.from_orm(user_model) for user_model in result.scalars().all()]
+        except Exception as e:
+            raise Exception(f"사용자 조회 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def get_users_with_comments(self, min_comments: int = 5) -> List[dict]:
+        """댓글이 있는 사용자 목록 조회 (프로필 분석용)"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(
+                    UserModel.user_id,
+                    UserModel.name,
+                    func.count(CommentModel.comment_id).label("comments_count"),
+                )
+                .join(CommentModel, UserModel.user_id == CommentModel.user_id)
+                .where(and_(UserModel.is_active == True, CommentModel.is_public == True))
+                .group_by(UserModel.user_id, UserModel.name)
+                .having(func.count(CommentModel.comment_id) >= min_comments)
+                .order_by(func.count(CommentModel.comment_id).desc())
+            )
+
+            result = db.execute(stmt)
+            return [
+                {"user_id": row.user_id, "name": row.name, "comments_count": row.comments_count}
+                for row in result
+            ]
+
+        except Exception as e:
+            return []
+        finally:
+            db.close()
+
+    async def update_user_profile(
+        self, user_id: int, update_data: dict, profile_image_url: Optional[UploadFile] = None
+    ) -> tuple[User, List[str]]:
+        """사용자 프로필 업데이트"""
+        db = self._get_db()
+        try:
+            # 사용자 조회
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = db.execute(stmt).scalar_one_or_none()
+
+            if not user_model:
+                raise Exception("사용자를 찾을 수 없습니다")
+
+            # Google 계정인 경우 비밀번호 변경 제한
+            if user_model.google_id and "password" in update_data:
+                raise Exception("Google 계정은 비밀번호를 변경할 수 없습니다")
+
+            updated_fields = []
+
+            # 이름 업데이트
+            if "name" in update_data and update_data["name"]:
+                user_model.name = update_data["name"]
+                updated_fields.append("name")
+
+            # 비밀번호 업데이트
+            if "password" in update_data and update_data["password"]:
+                user_model.password_hash = get_password_hash(update_data["password"])
+                updated_fields.append("password")
+
+            # 프로필 이미지 업데이트
+            if profile_image_url:
+                image_url = await self._save_profile_image(user_id, profile_image_url)
+                user_model.profile_image_url = image_url
+                updated_fields.append("profile_image_url")
+
+            if not updated_fields:
+                raise Exception("수정할 정보가 없습니다")
+
+            # 업데이트 시간 갱신
+            from datetime import datetime
+
+            user_model.updated_at = datetime.utcnow()
+
+            db.commit()
+            db.refresh(user_model)
+
+            return User.from_orm(user_model), updated_fields
+
+        except Exception as e:
+            db.rollback()
+            raise Exception(f"프로필 업데이트 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def verify_current_password(self, user_id: int, password: str) -> bool:
+        """현재 비밀번호 확인"""
+        db = self._get_db()
+        try:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = db.execute(stmt).scalar_one_or_none()
+
+            if not user_model or user_model.google_id:
+                return False
+
+            return verify_password(password, user_model.password_hash)
+
+        except Exception:
+            return False
+        finally:
+            db.close()
+
+    async def _check_user_by_email(self, email: str, db: Session) -> bool:
+        """이메일 중복 체크"""
+        stmt = select(UserModel).where(UserModel.email == email)
+        result = db.execute(stmt).scalar_one_or_none()
+        return result is not None
+
+    async def _check_user_by_google_id(self, google_id: str, db: Session) -> bool:
+        """Google ID 중복 체크"""
+        stmt = select(UserModel).where(UserModel.google_id == google_id)
+        result = db.execute(stmt).scalar_one_or_none()
+        return result is not None
+
+    async def _get_counts_with_db(self, user_id: int, db: Session) -> dict:
         """모든 통계 정보를 한 번에 조회"""
         try:
             # 서브쿼리들 정의
@@ -378,7 +578,7 @@ class UserService:
                 watchlist_subq.label("watchlist_count"),
             )
 
-            result = self.db.execute(stmt)
+            result = db.execute(stmt)
             stats = result.first()
 
             return {
@@ -390,8 +590,7 @@ class UserService:
                 "watchlist_count": stats.watchlist_count or 0,
             }
 
-        except Exception as e:
-            print(f"통계 조회 실패: {str(e)}")
+        except Exception:
             return {
                 "followers_count": 0,
                 "following_count": 0,
@@ -400,318 +599,6 @@ class UserService:
                 "liked_movies_count": 0,
                 "watchlist_count": 0,
             }
-
-    async def _get_followers_list(self, user_id: int, limit: int) -> list[UserFollower]:
-        """팔로워 목록"""
-        try:
-            stmt = (
-                select(
-                    UserModel.user_id,
-                    UserModel.name,
-                    UserModel.profile_image_url,
-                    UserFollowModel.created_at,
-                )
-                .join(UserFollowModel, UserModel.user_id == UserFollowModel.follower_id)
-                .where(UserFollowModel.following_id == user_id)
-                .order_by(UserFollowModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserFollower(
-                    user_id=row.user_id,
-                    name=row.name,
-                    profile_image_url=row.profile_image_url,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_following_list(self, user_id: int, limit: int) -> list[UserFollowing]:
-        """팔로잉 목록"""
-        try:
-            stmt = (
-                select(
-                    UserModel.user_id,
-                    UserModel.name,
-                    UserModel.profile_image_url,
-                    UserFollowModel.created_at,
-                )
-                .join(UserFollowModel, UserModel.user_id == UserFollowModel.following_id)
-                .where(UserFollowModel.follower_id == user_id)
-                .order_by(UserFollowModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserFollowing(
-                    user_id=row.user_id,
-                    name=row.name,
-                    profile_image_url=row.profile_image_url,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def get_following_persons_list(
-        self, user_id: int, limit: int = 20, offset: int = 0
-    ) -> List[UserFollowingPerson]:
-        """팔로우 중인 인물 목록"""
-        try:
-            stmt = (
-                select(
-                    PersonModel.person_id,
-                    PersonModel.name,
-                    PersonModel.profile_image_url,
-                    PersonFollowModel.created_at,
-                )
-                .join(PersonFollowModel, PersonModel.person_id == PersonFollowModel.person_id)
-                .where(PersonFollowModel.user_id == user_id)
-                .order_by(PersonFollowModel.created_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserFollowingPerson(
-                    person_id=row.person_id,
-                    name=row.name,
-                    profile_image_url=row.profile_image_url,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception as e:
-            print(f"팔로우 인물 조회 실패: {str(e)}")
-            return []
-
-    async def get_following_persons_count(self, user_id: int) -> int:
-        """팔로우 중인 인물 총 개수"""
-        try:
-            stmt = select(func.count(PersonFollowModel.person_id)).where(
-                PersonFollowModel.user_id == user_id
-            )
-            return self.db.execute(stmt).scalar() or 0
-        except Exception:
-            return 0
-
-    async def _get_recent_comments(self, user_id: int, limit: int) -> list[UserComment]:
-        """최근 코멘트 목록"""
-        try:
-            stmt = (
-                select(
-                    CommentModel.comment_id,
-                    CommentModel.movie_id,
-                    CommentModel.content,
-                    CommentModel.is_spoiler,
-                    CommentModel.created_at,
-                    func.count(CommentLikeModel.comment_id).label("likes_count"),
-                )
-                .outerjoin(CommentLikeModel, CommentModel.comment_id == CommentLikeModel.comment_id)
-                .where(CommentModel.user_id == user_id)
-                .group_by(
-                    CommentModel.comment_id,
-                    CommentModel.movie_id,
-                    CommentModel.content,
-                    CommentModel.is_spoiler,
-                    CommentModel.created_at,
-                )
-                .order_by(CommentModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                UserComment(
-                    comment_id=row.comment_id,
-                    movie_id=row.movie_id,
-                    content=row.content,
-                    is_spoiler=row.is_spoiler,
-                    likes_count=row.likes_count,
-                    created_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_liked_movies(self, user_id: int, limit: int) -> list[WatchlistMovie]:
-        """좋아요한 영화 목록"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    MovieLikeModel.created_at,
-                )
-                .join(MovieLikeModel, MovieModel.movie_id == MovieLikeModel.movie_id)
-                .where(MovieLikeModel.user_id == user_id)
-                .order_by(MovieLikeModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def _get_watchlist_movies(self, user_id: int, limit: int) -> list[WatchlistMovie]:
-        """왓치리스트 영화 목록"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    WatchlistModel.created_at,
-                )
-                .join(WatchlistModel, MovieModel.movie_id == WatchlistModel.movie_id)
-                .where(WatchlistModel.user_id == user_id)
-                .order_by(WatchlistModel.created_at.desc())
-                .limit(limit)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception:
-            return []
-
-    async def get_all_users(self) -> list[User]:
-        """개발용 - DB 전체 사용자 조회"""
-        try:
-            stmt = select(UserModel)
-            result = self.db.execute(stmt)
-            return [User.from_orm(user_model) for user_model in result.scalars()]
-
-        except Exception as e:
-            raise Exception(f"전체 사용자 조회 실패: {str(e)}")
-
-    async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
-        try:
-            stmt = (
-                select(UserModel)
-                .where(UserModel.name.ilike(f"%{name}%"))
-                .order_by(case((UserModel.name.ilike(f"{name}%"), 0), else_=1), UserModel.name)
-            )
-            result = self.db.execute(stmt)
-            return [UserSearchResult.from_orm(user_model) for user_model in result.scalars().all()]
-        except Exception as e:
-            raise Exception(f"사용자 조회 실패: {str(e)}")
-
-    async def get_users_with_comments(self, min_comments: int = 5) -> List[dict]:
-        """댓글이 있는 사용자 목록 조회 (프로필 분석용)"""
-        try:
-            stmt = (
-                select(
-                    UserModel.user_id,
-                    UserModel.name,
-                    func.count(CommentModel.comment_id).label("comments_count"),
-                )
-                .join(CommentModel, UserModel.user_id == CommentModel.user_id)
-                .where(and_(UserModel.is_active == True, CommentModel.is_public == True))
-                .group_by(UserModel.user_id, UserModel.name)
-                .having(func.count(CommentModel.comment_id) >= min_comments)
-                .order_by(func.count(CommentModel.comment_id).desc())
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                {"user_id": row.user_id, "name": row.name, "comments_count": row.comments_count}
-                for row in result
-            ]
-
-        except Exception as e:
-            print(f"댓글 있는 사용자 조회 실패: {str(e)}")
-            return []
-
-    async def update_user_profile(
-        self, user_id: int, update_data: dict, profile_image_url: Optional[UploadFile] = None
-    ) -> tuple[User, List[str]]:
-        """사용자 프로필 업데이트"""
-        try:
-            # 사용자 조회
-            stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_model = self.db.execute(stmt).scalar_one_or_none()
-
-            if not user_model:
-                raise Exception("사용자를 찾을 수 없습니다")
-
-            # Google 계정인 경우 비밀번호 변경 제한
-            if user_model.google_id and "password" in update_data:
-                raise Exception("Google 계정은 비밀번호를 변경할 수 없습니다")
-
-            updated_fields = []
-
-            # 이름 업데이트
-            if "name" in update_data and update_data["name"]:
-                user_model.name = update_data["name"]
-                updated_fields.append("name")
-
-            # 비밀번호 업데이트
-            if "password" in update_data and update_data["password"]:
-                user_model.password_hash = get_password_hash(update_data["password"])
-                updated_fields.append("password")
-
-            # 프로필 이미지 업데이트
-            if profile_image_url:
-                image_url = await self._save_profile_image(user_id, profile_image_url)
-                user_model.profile_image_url = image_url
-                updated_fields.append("profile_image_url")
-
-            if not updated_fields:
-                raise Exception("수정할 정보가 없습니다")
-
-            # 업데이트 시간 갱신
-            from datetime import datetime
-
-            user_model.updated_at = datetime.utcnow()
-
-            self.db.commit()
-            self.db.refresh(user_model)
-
-            return User.from_orm(user_model), updated_fields
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"프로필 업데이트 실패: {str(e)}")
 
     async def _save_profile_image(self, user_id: int, image_file: UploadFile) -> str:
         """프로필 이미지 파일 저장"""
@@ -746,21 +633,3 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"이미지 저장 실패: {str(e)}")
-
-    async def verify_current_password(self, user_id: int, password: str) -> bool:
-        """현재 비밀번호 확인"""
-        try:
-            stmt = select(UserModel).where(UserModel.user_id == user_id)
-            user_model = self.db.execute(stmt).scalar_one_or_none()
-
-            if not user_model or user_model.google_id:
-                return False
-
-            return verify_password(password, user_model.password_hash)
-
-        except Exception:
-            return False
-
-    def __del__(self):
-        if hasattr(self, "db"):
-            self.db.close()
