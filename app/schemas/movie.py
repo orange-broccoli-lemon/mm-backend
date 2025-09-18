@@ -20,6 +20,8 @@ class Movie(BaseModel):
     trailer_url: Optional[str] = Field(default=None, description="트레일러 URL")
     created_at: Optional[datetime] = Field(default=None, description="생성일시")
     updated_at: Optional[datetime] = Field(default=None, description="수정일시")
+    concise_review: Optional[str] = Field(default=None, description="AI 리뷰 요약")
+    concise_review_date: Optional[datetime] = Field(default=None, description="리뷰 분석 일시")
 
     class Config:
         from_attributes = True

@@ -1,7 +1,20 @@
 # app/api/v1/__init__.py
 
 from fastapi import APIRouter
-from . import movies, search, system, auth, comments, feed, genres, persons, users, ai
+from . import (
+    movies,
+    search,
+    system,
+    auth,
+    comments,
+    feed,
+    genres,
+    persons,
+    users,
+    ai,
+    admin,
+    recommendations,
+)
 
 api_router = APIRouter()
 
@@ -15,3 +28,5 @@ api_router.include_router(genres.router, prefix="/genres", tags=["장르"])
 api_router.include_router(persons.router, prefix="/persons", tags=["인물"])
 api_router.include_router(users.router, prefix="/users", tags=["사용자"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"])
+api_router.include_router(admin.router, prefix="/admin", tags=["관리자"])
+api_router.include_router(recommendations.router, prefix="/recommendations", tags=["추천"])

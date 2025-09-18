@@ -195,6 +195,8 @@ class UserService:
                 "profile_image_url": user_model.profile_image_url,
                 "created_at": user_model.created_at,
                 "is_active": user_model.is_active,
+                "profile_review": user_model.profile_review,
+                "profile_review_date": user_model.profile_review_date,
             }
 
             # 본인만 볼 수 있는 정보
@@ -289,6 +291,38 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"사용자 댓글 조회 실패: {str(e)}")
+
+    async def update_user_profile_review(self, user_id: int, profile_review: str) -> bool:
+        """사용자 프로필 분석 결과 업데이트"""
+        try:
+            stmt = select(UserModel).where(UserModel.user_id == user_id)
+            user_model = self.db.execute(stmt).scalar_one_or_none()
+
+            if not user_model:
+                return False
+
+            from datetime import datetime
+
+            user_model.profile_review = profile_review
+            user_model.profile_review_date = datetime.utcnow()
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"프로필 분석 업데이트 실패: {str(e)}")
+            return False
+
+    async def get_all_active_users(self) -> List[User]:
+        """모든 활성 사용자 조회"""
+        try:
+            stmt = select(UserModel).where(UserModel.is_active == True)
+            result = self.db.execute(stmt)
+            return [User.from_orm(user_model) for user_model in result.scalars()]
+
+        except Exception as e:
+            raise Exception(f"활성 사용자 조회 실패: {str(e)}")
 
     async def _get_counts(self, user_id: int) -> dict:
         """모든 통계 정보를 한 번에 조회"""
@@ -423,10 +457,10 @@ class UserService:
         except Exception:
             return []
 
-    async def _get_following_persons_list(
-        self, user_id: int, limit: int
-    ) -> list[UserFollowingPerson]:
-        """팔로우 중인 인물 목록"""
+    async def get_following_persons_list(
+        self, user_id: int, limit: int = 20, offset: int = 0
+    ) -> List[UserFollowingPerson]:
+        """팔로우 중인 인물 목록 (페이지네이션 지원)"""
         try:
             stmt = (
                 select(
@@ -439,6 +473,7 @@ class UserService:
                 .where(PersonFollowModel.user_id == user_id)
                 .order_by(PersonFollowModel.created_at.desc())
                 .limit(limit)
+                .offset(offset)  # 오프셋 추가
             )
 
             result = self.db.execute(stmt)
@@ -452,8 +487,19 @@ class UserService:
                 for row in result
             ]
 
-        except Exception:
+        except Exception as e:
+            print(f"팔로우 인물 조회 실패: {str(e)}")
             return []
+
+    async def get_following_persons_count(self, user_id: int) -> int:
+        """팔로우 중인 인물 총 개수"""
+        try:
+            stmt = select(func.count(PersonFollowModel.person_id)).where(
+                PersonFollowModel.user_id == user_id
+            )
+            return self.db.execute(stmt).scalar() or 0
+        except Exception:
+            return 0
 
     async def _get_recent_comments(self, user_id: int, limit: int) -> list[UserComment]:
         """최근 코멘트 목록"""
@@ -573,25 +619,44 @@ class UserService:
 
         except Exception as e:
             raise Exception(f"전체 사용자 조회 실패: {str(e)}")
-        
+
     async def search_users_by_name(self, name: str) -> List[UserSearchResult]:
         try:
             stmt = (
                 select(UserModel)
                 .where(UserModel.name.ilike(f"%{name}%"))
-                .order_by(
-                    case(
-                        (UserModel.name.ilike(f"{name}%"), 0),
-                        else_=1
-                    ),
-                    UserModel.name
-                )
+                .order_by(case((UserModel.name.ilike(f"{name}%"), 0), else_=1), UserModel.name)
             )
             result = self.db.execute(stmt)
             return [UserSearchResult.from_orm(user_model) for user_model in result.scalars().all()]
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
-        
+
+    async def get_users_with_comments(self, min_comments: int = 5) -> List[dict]:
+        """댓글이 있는 사용자 목록 조회 (프로필 분석용)"""
+        try:
+            stmt = (
+                select(
+                    UserModel.user_id,
+                    UserModel.name,
+                    func.count(CommentModel.comment_id).label("comments_count"),
+                )
+                .join(CommentModel, UserModel.user_id == CommentModel.user_id)
+                .where(and_(UserModel.is_active == True, CommentModel.is_public == True))
+                .group_by(UserModel.user_id, UserModel.name)
+                .having(func.count(CommentModel.comment_id) >= min_comments)
+                .order_by(func.count(CommentModel.comment_id).desc())
+            )
+
+            result = self.db.execute(stmt)
+            return [
+                {"user_id": row.user_id, "name": row.name, "comments_count": row.comments_count}
+                for row in result
+            ]
+
+        except Exception as e:
+            print(f"댓글 있는 사용자 조회 실패: {str(e)}")
+            return []
 
     def __del__(self):
         if hasattr(self, "db"):

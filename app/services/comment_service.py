@@ -385,6 +385,42 @@ class CommentService:
         result = self.db.execute(stmt)
         return result.scalar_one_or_none() is not None
 
+    async def get_user_all_comments_text(self, user_id: int) -> List[str]:
+        """사용자의 모든 공개 댓글 텍스트만 조회"""
+        try:
+            stmt = (
+                select(CommentModel.content)
+                .where(and_(CommentModel.user_id == user_id, CommentModel.is_public == True))
+                .order_by(CommentModel.created_at.desc())
+                .limit(20)
+            )
+
+            result = self.db.execute(stmt)
+            comments = [row[0] for row in result]
+            return comments
+
+        except Exception as e:
+            print(f"사용자 댓글 텍스트 조회 실패: {str(e)}")
+            return []
+
+    async def get_movie_all_comments_text(self, movie_id: int) -> List[str]:
+        """영화의 모든 공개 댓글 텍스트만 조회"""
+        try:
+            stmt = (
+                select(CommentModel.content)
+                .where(and_(CommentModel.movie_id == movie_id, CommentModel.is_public == True))
+                .order_by(CommentModel.created_at.desc())
+                .limit(20)
+            )
+
+            result = self.db.execute(stmt)
+            comments = [row[0] for row in result]
+            return comments
+
+        except Exception as e:
+            print(f"영화 댓글 텍스트 조회 실패: {str(e)}")
+            return []
+
     def __del__(self):
         if hasattr(self, "db"):
             self.db.close()

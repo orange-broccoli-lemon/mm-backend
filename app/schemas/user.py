@@ -128,5 +128,8 @@ class UserDetail(BaseModel):
     liked_movies_count: int = Field(default=0, description="좋아요한 영화 수")
     watchlist_count: int = Field(default=0, description="왓치리스트 영화 수")
 
+    profile_review: Optional[str] = Field(default=None, description="AI 프로필 분석 결과")
+    profile_review_date: Optional[datetime] = Field(default=None, description="프로필 분석 일시")
+
     class Config:
         from_attributes = True

@@ -12,6 +12,7 @@ from app.models.watchlist import WatchlistModel
 from app.schemas.movie import Movie, MovieLike, Watchlist, WatchlistMovie
 from app.services.tmdb_service import TMDBService
 from app.database import get_db
+from app.models.comment import CommentModel
 
 
 class MovieService:
@@ -54,6 +55,8 @@ class MovieService:
                 "trailer_url": movie_model.trailer_url,
                 "created_at": movie_model.created_at,
                 "updated_at": movie_model.updated_at,
+                "concise_review": movie_model.concise_review,
+                "concise_review_date": movie_model.concise_review_date,
             }
 
             # 4. 장르 정보 추가
@@ -563,6 +566,55 @@ class MovieService:
             if video.get("type") == "Trailer" and video.get("site") == "YouTube":
                 return f"https://www.youtube.com/watch?v={video.get('key')}"
         return None
+
+    async def update_movie_concise_review(self, movie_id: int, concise_review: str) -> bool:
+        """영화 리뷰 요약 결과 업데이트"""
+        try:
+            stmt = select(MovieModel).where(MovieModel.movie_id == movie_id)
+            movie_model = self.db.execute(stmt).scalar_one_or_none()
+
+            if not movie_model:
+                return False
+
+            from datetime import datetime
+
+            movie_model.concise_review = concise_review
+            movie_model.concise_review_date = datetime.utcnow()
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"영화 리뷰 요약 업데이트 실패: {str(e)}")
+            return False
+
+    async def get_movies_with_comments(self, min_comments: int = 5) -> List[dict]:
+        """댓글이 있는 영화 목록 조회"""
+        try:
+            # 영화별 댓글 수 조회
+            stmt = (
+                select(
+                    MovieModel.movie_id,
+                    MovieModel.title,
+                    func.count(CommentModel.comment_id).label("comments_count"),
+                )
+                .join(CommentModel, MovieModel.movie_id == CommentModel.movie_id)
+                .where(CommentModel.is_public == True)
+                .group_by(MovieModel.movie_id, MovieModel.title)
+                .having(func.count(CommentModel.comment_id) >= min_comments)
+                .order_by(func.count(CommentModel.comment_id).desc())
+            )
+
+            result = self.db.execute(stmt)
+            return [
+                {"movie_id": row.movie_id, "title": row.title, "comments_count": row.comments_count}
+                for row in result
+            ]
+
+        except Exception as e:
+            print(f"댓글 있는 영화 조회 실패: {str(e)}")
+            return []
 
     def __del__(self):
         if hasattr(self, "db"):

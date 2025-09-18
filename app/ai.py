@@ -91,7 +91,6 @@ client = AsyncOpenAI(base_url="https://gms.ssafy.io/gmsapi/api.openai.com/v1")
 
 
 async def findbot(user_content: str):
-    """async 함수로 변경하고 asyncio.run() 제거"""
     system_prompt = """당신은 find bot이라는 이름의 긍정 에너지 가득한 영화 찾기 전문 AI입니다.
 
 핵심 역할:
@@ -149,7 +148,6 @@ async def findbot(user_content: str):
 
 
 async def concise_reviewbot(movie_title: str, reviews: List[str]):
-    """async 함수로 변경하고 asyncio.run() 제거"""
     prompt = f"""당신은 Concise Review Bot입니다.\
         
 영화 '{movie_title}'에 대한 아래 리뷰들을 바탕으로 4~5문장으로 간단하게 평가를 요약해 주세요.\
@@ -165,15 +163,15 @@ async def concise_reviewbot(movie_title: str, reviews: List[str]):
         max_tokens=500,
         stream=True,
     )
-    res_text = ""
+    result = ""
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
-            res_text += chunk.choices[0].delta.content
-    return res_text
+        content = chunk.choices[0].delta.content
+        if content:
+            result += content
+    return result
 
 
 async def profile_reviewbot(reviewer_name: str, reviews: List[str]):
-    """async 함수로 변경하고 asyncio.run() 제거"""
     prompt = f"""당신은 Review Profile Bot입니다.
 
 '{reviewer_name}'라는 이름의 리뷰어가 아래 리뷰들을 작성했습니다:
