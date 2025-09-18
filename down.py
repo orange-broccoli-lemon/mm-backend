@@ -45,3 +45,5 @@ model.save_pretrained(save_dir)
 
 print(f"모델과 토크나이저가 {save_dir}에 저장되었습니다.")
 
+
+
