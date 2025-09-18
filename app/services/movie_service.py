@@ -11,98 +11,313 @@ from app.models.movie_like import MovieLikeModel
 from app.models.watchlist import WatchlistModel
 from app.schemas.movie import Movie, MovieLike, Watchlist, WatchlistMovie
 from app.services.tmdb_service import TMDBService
-from app.database import get_db
+from app.database import SessionLocal
 from app.models.comment import CommentModel
 
 
 class MovieService:
 
     def __init__(self):
-        self.db: Session = next(get_db())
         self.tmdb_service = TMDBService()
+
+    def _get_db(self) -> Session:
+        """데이터베이스 세션 생성"""
+        return SessionLocal()
 
     async def get_movie_detail(
         self, movie_id: int, user_id: Optional[int] = None
     ) -> Optional[dict]:
         """영화 상세 정보 조회"""
+        db = self._get_db()
         try:
-            print(f"영화 상세 조회: {movie_id}")
-
             # 1. DB에서 영화 조회
-            stmt = select(MovieModel).where(MovieModel.movie_id == movie_id)
-            result = self.db.execute(stmt)
-            movie_model = result.scalar_one_or_none()
+            movie_model = self._get_movie_model_by_id(movie_id, db)
 
             # 2. DB에 없으면 TMDB에서 가져와서 저장
             if not movie_model:
-                print("DB에 영화 없음 - TMDB에서 저장")
-                movie_model = await self._fetch_and_save_from_tmdb(movie_id)
+                movie_model = await self._fetch_and_save_from_tmdb_with_db(movie_id, db)
                 if not movie_model:
                     return None
 
             # 3. 영화 기본 정보 구성
-            movie_dict = {
-                "movie_id": movie_model.movie_id,
-                "title": movie_model.title,
-                "original_title": movie_model.original_title,
-                "overview": movie_model.overview,
-                "release_date": movie_model.release_date,
-                "runtime": movie_model.runtime,
-                "poster_url": movie_model.poster_url,
-                "backdrop_url": movie_model.backdrop_url,
-                "average_rating": movie_model.average_rating,
-                "is_adult": movie_model.is_adult,
-                "trailer_url": movie_model.trailer_url,
-                "created_at": movie_model.created_at,
-                "updated_at": movie_model.updated_at,
-                "concise_review": movie_model.concise_review,
-                "concise_review_date": movie_model.concise_review_date,
-            }
+            movie_dict = self._build_movie_detail_dict(movie_model)
 
             # 4. 장르 정보 추가
-            genres = await self.get_movie_genres(movie_id)
+            genres = await self._get_movie_genres_with_db(movie_id, db)
             movie_dict["genres"] = genres
 
             # 5. 출연진/스태프 정보 추가
-            cast_info = await self._get_movie_cast_info(movie_id, limit_cast=True)
+            cast_info = await self._get_movie_cast_info_with_db(movie_id, db, limit_cast=True)
             movie_dict.update(cast_info)
 
             # 6. 사용자 액션 정보 추가
             if user_id:
-                movie_dict["is_liked"] = await self._is_movie_liked(user_id, movie_id)
-                movie_dict["is_in_watchlist"] = await self._is_in_watchlist(user_id, movie_id)
+                movie_dict["is_liked"] = self._is_movie_liked_with_db(user_id, movie_id, db)
+                movie_dict["is_in_watchlist"] = self._is_in_watchlist_with_db(user_id, movie_id, db)
             else:
                 movie_dict["is_liked"] = False
                 movie_dict["is_in_watchlist"] = False
 
             # 7. 좋아요 수 추가
-            movie_dict["likes_count"] = await self._get_movie_likes_count(movie_id)
+            movie_dict["likes_count"] = self._get_movie_likes_count_with_db(movie_id, db)
 
             return movie_dict
 
         except Exception as e:
-            print(f"영화 상세 조회 실패: {str(e)}")
             raise Exception(f"영화 상세 조회 실패: {str(e)}")
+        finally:
+            db.close()
 
     async def get_movie_genres(self, movie_id: int) -> List[dict]:
         """영화의 장르 목록 조회"""
+        db = self._get_db()
         try:
-            stmt = (
-                select(GenreModel)
-                .join(MovieGenreModel, GenreModel.genre_id == MovieGenreModel.genre_id)
-                .where(MovieGenreModel.movie_id == movie_id)
+            return await self._get_movie_genres_with_db(movie_id, db)
+        except Exception as e:
+            return []
+        finally:
+            db.close()
+
+    async def like_movie(self, user_id: int, movie_id: int) -> MovieLike:
+        """영화 좋아요"""
+        db = self._get_db()
+        try:
+            if self._is_movie_liked_with_db(user_id, movie_id, db):
+                raise Exception("이미 좋아요한 영화입니다")
+
+            like = MovieLikeModel(user_id=user_id, movie_id=movie_id)
+            db.add(like)
+            db.commit()
+            db.refresh(like)
+
+            return MovieLike(
+                user_id=like.user_id, movie_id=like.movie_id, created_at=like.created_at
             )
 
-            result = self.db.execute(stmt)
-            genres = result.scalars().all()
+        except Exception as e:
+            db.rollback()
+            raise Exception(f"영화 좋아요 실패: {str(e)}")
+        finally:
+            db.close()
 
-            return [{"id": genre.genre_id, "name": genre.name} for genre in genres]
+    async def unlike_movie(self, user_id: int, movie_id: int) -> bool:
+        """영화 좋아요 취소"""
+        db = self._get_db()
+        try:
+            stmt = select(MovieLikeModel).where(
+                and_(MovieLikeModel.user_id == user_id, MovieLikeModel.movie_id == movie_id)
+            )
+            like = db.execute(stmt).scalar_one_or_none()
+
+            if not like:
+                raise Exception("좋아요 기록을 찾을 수 없습니다")
+
+            db.delete(like)
+            db.commit()
+            return True
 
         except Exception as e:
-            print(f"영화 장르 조회 실패: {str(e)}")
-            return []
+            db.rollback()
+            raise Exception(f"좋아요 취소 실패: {str(e)}")
+        finally:
+            db.close()
 
-    async def _fetch_and_save_from_tmdb(self, movie_id: int) -> Optional[MovieModel]:
+    async def add_to_watchlist(self, user_id: int, movie_id: int) -> Watchlist:
+        """왓치리스트에 추가"""
+        db = self._get_db()
+        try:
+            if self._is_in_watchlist_with_db(user_id, movie_id, db):
+                raise Exception("이미 왓치리스트에 있는 영화입니다")
+
+            watchlist = WatchlistModel(user_id=user_id, movie_id=movie_id)
+            db.add(watchlist)
+            db.commit()
+            db.refresh(watchlist)
+
+            return Watchlist(
+                user_id=watchlist.user_id,
+                movie_id=watchlist.movie_id,
+                created_at=watchlist.created_at,
+            )
+
+        except Exception as e:
+            db.rollback()
+            raise Exception(f"왓치리스트 추가 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def remove_from_watchlist(self, user_id: int, movie_id: int) -> bool:
+        """왓치리스트에서 제거"""
+        db = self._get_db()
+        try:
+            stmt = select(WatchlistModel).where(
+                and_(WatchlistModel.user_id == user_id, WatchlistModel.movie_id == movie_id)
+            )
+            watchlist = db.execute(stmt).scalar_one_or_none()
+
+            if not watchlist:
+                raise Exception("왓치리스트에서 영화를 찾을 수 없습니다")
+
+            db.delete(watchlist)
+            db.commit()
+            return True
+
+        except Exception as e:
+            db.rollback()
+            raise Exception(f"왓치리스트 제거 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def get_user_watchlist(
+        self, user_id: int, limit: int = 20, offset: int = 0
+    ) -> list[WatchlistMovie]:
+        """사용자 왓치리스트 조회"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(
+                    MovieModel.movie_id,
+                    MovieModel.title,
+                    MovieModel.poster_url,
+                    MovieModel.release_date,
+                    MovieModel.average_rating,
+                    WatchlistModel.created_at,
+                )
+                .join(WatchlistModel, MovieModel.movie_id == WatchlistModel.movie_id)
+                .where(WatchlistModel.user_id == user_id)
+                .order_by(WatchlistModel.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+
+            result = db.execute(stmt)
+            return [
+                WatchlistMovie(
+                    movie_id=row.movie_id,
+                    title=row.title,
+                    poster_url=row.poster_url,
+                    release_date=row.release_date,
+                    average_rating=row.average_rating,
+                    added_at=row.created_at,
+                )
+                for row in result
+            ]
+
+        except Exception as e:
+            raise Exception(f"왓치리스트 조회 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def get_user_liked_movies(
+        self, user_id: int, limit: int = 20, offset: int = 0
+    ) -> list[WatchlistMovie]:
+        """사용자가 좋아요한 영화"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(
+                    MovieModel.movie_id,
+                    MovieModel.title,
+                    MovieModel.poster_url,
+                    MovieModel.release_date,
+                    MovieModel.average_rating,
+                    MovieLikeModel.created_at,
+                )
+                .join(MovieLikeModel, MovieModel.movie_id == MovieLikeModel.movie_id)
+                .where(MovieLikeModel.user_id == user_id)
+                .order_by(MovieLikeModel.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+
+            result = db.execute(stmt)
+            return [
+                WatchlistMovie(
+                    movie_id=row.movie_id,
+                    title=row.title,
+                    poster_url=row.poster_url,
+                    release_date=row.release_date,
+                    average_rating=row.average_rating,
+                    added_at=row.created_at,
+                )
+                for row in result
+            ]
+
+        except Exception as e:
+            raise Exception(f"좋아요 영화 조회 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def get_all_movies(self, skip: int = 0, limit: int = 100) -> List[Movie]:
+        """전체 영화 조회"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(MovieModel).offset(skip).limit(limit).order_by(MovieModel.created_at.desc())
+            )
+            result = db.execute(stmt)
+            return [Movie.from_orm(movie) for movie in result.scalars()]
+
+        except Exception as e:
+            raise Exception(f"영화 목록 조회 실패: {str(e)}")
+        finally:
+            db.close()
+
+    async def update_movie_concise_review(self, movie_id: int, concise_review: str) -> bool:
+        """영화 리뷰 요약 결과 업데이트"""
+        db = self._get_db()
+        try:
+            movie_model = self._get_movie_model_by_id(movie_id, db)
+
+            if not movie_model:
+                return False
+
+            from datetime import datetime
+
+            movie_model.concise_review = concise_review
+            movie_model.concise_review_date = datetime.utcnow()
+
+            db.commit()
+            return True
+
+        except Exception as e:
+            db.rollback()
+            return False
+        finally:
+            db.close()
+
+    async def get_movies_with_comments(self, min_comments: int = 5) -> List[dict]:
+        """댓글이 있는 영화 목록 조회"""
+        db = self._get_db()
+        try:
+            stmt = (
+                select(
+                    MovieModel.movie_id,
+                    MovieModel.title,
+                    func.count(CommentModel.comment_id).label("comments_count"),
+                )
+                .join(CommentModel, MovieModel.movie_id == CommentModel.movie_id)
+                .where(CommentModel.is_public == True)
+                .group_by(MovieModel.movie_id, MovieModel.title)
+                .having(func.count(CommentModel.comment_id) >= min_comments)
+                .order_by(func.count(CommentModel.comment_id).desc())
+            )
+
+            result = db.execute(stmt)
+            return [
+                {"movie_id": row.movie_id, "title": row.title, "comments_count": row.comments_count}
+                for row in result
+            ]
+
+        except Exception as e:
+            return []
+        finally:
+            db.close()
+
+    # TMDB 관련 메서드들
+    async def _fetch_and_save_from_tmdb_with_db(
+        self, movie_id: int, db: Session
+    ) -> Optional[MovieModel]:
         """TMDB에서 영화 정보를 가져와서 DB에 저장"""
         try:
             # TMDB에서 영화 상세 정보 조회
@@ -125,25 +340,181 @@ class MovieService:
                 trailer_url=self._extract_trailer_url(tmdb_data),
             )
 
-            self.db.add(movie_model)
-            self.db.commit()
-            self.db.refresh(movie_model)
+            db.add(movie_model)
+            db.commit()
+            db.refresh(movie_model)
 
             # 장르 정보 저장
-            await self._save_movie_genres(movie_id, tmdb_data.get("genres", []))
+            await self._save_movie_genres_with_db(movie_id, tmdb_data.get("genres", []), db)
 
             # 출연진/스태프 정보 저장
-            await self._save_movie_cast(movie_id, tmdb_data.get("credits", {}))
+            await self._save_movie_cast_with_db(movie_id, tmdb_data.get("credits", {}), db)
 
-            print(f"TMDB에서 영화 저장 완료: {movie_model.title}")
             return movie_model
 
         except Exception as e:
-            self.db.rollback()
-            print(f"TMDB 영화 저장 실패: {str(e)}")
+            db.rollback()
             return None
 
-    async def _get_movie_cast_info(self, movie_id: int, limit_cast: bool = False) -> dict:
+    async def _save_movie_genres_with_db(self, movie_id: int, genres: List[dict], db: Session):
+        """영화 장르 저장"""
+        try:
+            for genre_data in genres:
+                genre_id = genre_data.get("id")
+                genre_name = genre_data.get("name")
+
+                if genre_id and genre_name:
+                    # 장르 생성
+                    if not self._genre_exists(genre_id, db):
+                        genre = GenreModel(genre_id=genre_id, name=genre_name)
+                        db.add(genre)
+                        db.commit()
+
+                    # 영화-장르 연결
+                    if not self._movie_genre_connection_exists(movie_id, genre_id, db):
+                        connection = MovieGenreModel(movie_id=movie_id, genre_id=genre_id)
+                        db.add(connection)
+                        db.commit()
+
+        except Exception:
+            pass
+
+    async def _save_movie_cast_with_db(self, movie_id: int, credits: dict, db: Session):
+        """TMDB cast 저장"""
+        try:
+            # 배우 저장
+            for cast in credits.get("cast", []):
+                person_id = cast.get("id")
+                if not person_id:
+                    continue
+
+                name = cast.get("name", "")
+                profile_path = cast.get("profile_path")
+                character = cast.get("character")
+                order = cast.get("order", 999)
+                job = cast.get("job") or "Actor"
+                department = cast.get("department") or "Acting"
+
+                await self._ensure_person_exists_with_db(
+                    person_id=person_id, name=name, profile_path=profile_path, db=db
+                )
+
+                await self._save_cast_connection_with_db(
+                    movie_id=movie_id,
+                    person_id=person_id,
+                    character=character,
+                    job=job,
+                    department=department,
+                    order=order,
+                    db=db,
+                )
+
+            # 감독 저장
+            director = next(
+                (c for c in credits.get("crew", []) if c.get("job") == "Director"), None
+            )
+
+            if director:
+                director_id = director.get("id")
+                if director_id:
+                    await self._ensure_person_exists_with_db(
+                        person_id=director_id,
+                        name=director.get("name", ""),
+                        profile_path=director.get("profile_path"),
+                        db=db,
+                    )
+                    await self._save_cast_connection_with_db(
+                        movie_id=movie_id,
+                        person_id=director_id,
+                        character=None,
+                        job="Director",
+                        department=director.get("department") or "Directing",
+                        order=None,
+                        db=db,
+                    )
+
+        except Exception:
+            pass
+
+    async def _ensure_person_exists_with_db(
+        self, person_id: int, name: str, profile_path: Optional[str], db: Session
+    ):
+        """인물 정보가 DB에 없으면 생성"""
+        try:
+            if not self._person_exists(person_id, db):
+                person = PersonModel(
+                    person_id=person_id,
+                    name=name,
+                    profile_image_url=self._build_profile_image_url(profile_path),
+                    popularity=0,
+                    gender=0,
+                    is_adult=False,
+                )
+                db.add(person)
+                db.commit()
+
+        except Exception:
+            db.rollback()
+
+    async def _save_cast_connection_with_db(
+        self,
+        movie_id: int,
+        person_id: int,
+        character: Optional[str],
+        job: str,
+        department: str,
+        order: Optional[int],
+        db: Session,
+    ):
+        """movie_cast 연결 저장"""
+        try:
+            # 중복 체크
+            if not self._cast_connection_exists(movie_id, person_id, job, db):
+                cast = MovieCastModel(
+                    movie_id=movie_id,
+                    person_id=person_id,
+                    character_name=character,
+                    job=job,
+                    department=department,
+                    cast_order=order,
+                    is_main_cast=(
+                        (order or 999) < 10
+                        if department == "Acting"
+                        else job in ["Director", "Producer"]
+                    ),
+                )
+                db.add(cast)
+                db.commit()
+
+        except Exception:
+            db.rollback()
+
+    def _get_movie_model_by_id(self, movie_id: int, db: Session) -> Optional[MovieModel]:
+        """영화 모델 조회"""
+        stmt = select(MovieModel).where(MovieModel.movie_id == movie_id)
+        result = db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _get_movie_genres_with_db(self, movie_id: int, db: Session) -> List[dict]:
+        """영화의 장르 목록 조회"""
+        try:
+            stmt = (
+                select(GenreModel)
+                .join(MovieGenreModel, GenreModel.genre_id == MovieGenreModel.genre_id)
+                .where(MovieGenreModel.movie_id == movie_id)
+            )
+
+            result = db.execute(stmt)
+            genres = result.scalars().all()
+
+            return [{"id": genre.genre_id, "name": genre.name} for genre in genres]
+
+        except Exception:
+            return []
+
+    async def _get_movie_cast_info_with_db(
+        self, movie_id: int, db: Session, limit_cast: bool = False
+    ) -> dict:
         """영화의 출연진/감독 조회"""
         try:
             stmt = (
@@ -162,7 +533,7 @@ class MovieService:
                 .order_by(MovieCastModel.cast_order.nulls_last())
             )
 
-            rows = self.db.execute(stmt).fetchall()
+            rows = db.execute(stmt).fetchall()
 
             cast_acting = []
             directors = []
@@ -185,10 +556,7 @@ class MovieService:
                     directors.append(item)
 
             # 제한 적용
-            if limit_cast:
-                cast_result = cast_acting[:5]
-            else:
-                cast_result = cast_acting
+            cast_result = cast_acting[:5] if limit_cast else cast_acting
 
             return {
                 "cast": cast_result,
@@ -197,353 +565,91 @@ class MovieService:
                 "directors_total": len(directors),
             }
 
-        except Exception as e:
-            print(f"출연진 조회 실패: {str(e)}")
+        except Exception:
             return {"cast": [], "crew": [], "cast_total": 0, "directors_total": 0}
 
-    async def _save_movie_cast(self, movie_id: int, credits: dict):
-        """TMDB cast 저장"""
-        try:
-            # 배우 저장
-            for cast in credits.get("cast", []):
-                person_id = cast.get("id")
-                if not person_id:
-                    continue
-
-                name = cast.get("name", "")
-                profile_path = cast.get("profile_path")
-                character = cast.get("character")
-                order = cast.get("order", 999)
-                job = cast.get("job") or "Actor"
-                department = cast.get("department") or "Acting"
-
-                await self._ensure_person_exists(
-                    person_id=person_id, name=name, profile_path=profile_path
-                )
-
-                await self._save_cast_connection(
-                    movie_id=movie_id,
-                    person_id=person_id,
-                    character=character,
-                    job=job,
-                    department=department,
-                    order=order,
-                )
-
-            # 감독 저장
-            director = next(
-                (c for c in credits.get("crew", []) if c.get("job") == "Director"), None
-            )
-
-            if director:
-                director_id = director.get("id")
-                if director_id:
-                    await self._ensure_person_exists(
-                        person_id=director_id,
-                        name=director.get("name", ""),
-                        profile_path=director.get("profile_path"),
-                    )
-                    await self._save_cast_connection(
-                        movie_id=movie_id,
-                        person_id=director_id,
-                        character=None,
-                        job="Director",
-                        department=director.get("department") or "Directing",
-                        order=None,
-                    )
-
-        except Exception as e:
-            print(f"출연진/감독 저장 실패: {str(e)}")
-
-    async def _ensure_person_exists(self, person_id: int, name: str, profile_path: Optional[str]):
-        """인물 정보가 DB에 없으면 생성"""
-        try:
-            stmt = select(PersonModel).where(PersonModel.person_id == person_id)
-            result = self.db.execute(stmt)
-
-            if not result.scalar_one_or_none():
-                person = PersonModel(
-                    person_id=person_id,
-                    name=name,
-                    profile_image_url=self._build_profile_image_url(profile_path),
-                    popularity=0,
-                    gender=0,
-                    is_adult=False,
-                )
-                self.db.add(person)
-                self.db.commit()
-
-        except Exception as e:
-            self.db.rollback()
-            print(f"인물 생성 실패: {str(e)}")
-
-    async def _save_cast_connection(
-        self,
-        movie_id: int,
-        person_id: int,
-        character: Optional[str],
-        job: str,
-        department: str,
-        order: Optional[int],
-    ):
-        """movie_cast 연결 저장"""
-        try:
-            # 중복 체크
-            stmt = select(MovieCastModel).where(
-                and_(
-                    MovieCastModel.movie_id == movie_id,
-                    MovieCastModel.person_id == person_id,
-                    MovieCastModel.job == job,
-                )
-            )
-
-            if not self.db.execute(stmt).scalar_one_or_none():
-                cast = MovieCastModel(
-                    movie_id=movie_id,
-                    person_id=person_id,
-                    character_name=character,
-                    job=job,
-                    department=department,
-                    cast_order=order,
-                    is_main_cast=(
-                        (order or 999) < 10
-                        if department == "Acting"
-                        else job in ["Director", "Producer"]
-                    ),
-                )
-                self.db.add(cast)
-                self.db.commit()
-
-        except Exception as e:
-            self.db.rollback()
-            print(f"출연진 연결 실패: {str(e)}")
-
-    async def _save_movie_genres(self, movie_id: int, genres: List[dict]):
-        """영화 장르 저장"""
-        try:
-            for genre_data in genres:
-                genre_id = genre_data.get("id")
-                genre_name = genre_data.get("name")
-
-                if genre_id and genre_name:
-                    # 장르 생성
-                    stmt = select(GenreModel).where(GenreModel.genre_id == genre_id)
-                    if not self.db.execute(stmt).scalar_one_or_none():
-                        genre = GenreModel(genre_id=genre_id, name=genre_name)
-                        self.db.add(genre)
-                        self.db.commit()
-
-                    # 영화-장르 연결
-                    stmt = select(MovieGenreModel).where(
-                        and_(
-                            MovieGenreModel.movie_id == movie_id,
-                            MovieGenreModel.genre_id == genre_id,
-                        )
-                    )
-                    if not self.db.execute(stmt).scalar_one_or_none():
-                        connection = MovieGenreModel(movie_id=movie_id, genre_id=genre_id)
-                        self.db.add(connection)
-                        self.db.commit()
-
-        except Exception as e:
-            print(f"장르 저장 실패: {str(e)}")
-
-    # 좋아요/왓치리스트 기능
-    async def like_movie(self, user_id: int, movie_id: int) -> MovieLike:
-        """영화 좋아요"""
-        try:
-            if await self._is_movie_liked(user_id, movie_id):
-                raise Exception("이미 좋아요한 영화입니다")
-
-            like = MovieLikeModel(user_id=user_id, movie_id=movie_id)
-            self.db.add(like)
-            self.db.commit()
-            self.db.refresh(like)
-
-            return MovieLike(
-                user_id=like.user_id, movie_id=like.movie_id, created_at=like.created_at
-            )
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"영화 좋아요 실패: {str(e)}")
-
-    async def unlike_movie(self, user_id: int, movie_id: int) -> bool:
-        """영화 좋아요 취소"""
-        try:
-            stmt = select(MovieLikeModel).where(
-                and_(MovieLikeModel.user_id == user_id, MovieLikeModel.movie_id == movie_id)
-            )
-            like = self.db.execute(stmt).scalar_one_or_none()
-
-            if not like:
-                raise Exception("좋아요 기록을 찾을 수 없습니다")
-
-            self.db.delete(like)
-            self.db.commit()
-            return True
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"좋아요 취소 실패: {str(e)}")
-
-    async def add_to_watchlist(self, user_id: int, movie_id: int) -> Watchlist:
-        """왓치리스트에 추가"""
-        try:
-            if await self._is_in_watchlist(user_id, movie_id):
-                raise Exception("이미 왓치리스트에 있는 영화입니다")
-
-            watchlist = WatchlistModel(user_id=user_id, movie_id=movie_id)
-            self.db.add(watchlist)
-            self.db.commit()
-            self.db.refresh(watchlist)
-
-            return Watchlist(
-                user_id=watchlist.user_id,
-                movie_id=watchlist.movie_id,
-                created_at=watchlist.created_at,
-            )
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"왓치리스트 추가 실패: {str(e)}")
-
-    async def remove_from_watchlist(self, user_id: int, movie_id: int) -> bool:
-        """왓치리스트에서 제거"""
-        try:
-            stmt = select(WatchlistModel).where(
-                and_(WatchlistModel.user_id == user_id, WatchlistModel.movie_id == movie_id)
-            )
-            watchlist = self.db.execute(stmt).scalar_one_or_none()
-
-            if not watchlist:
-                raise Exception("왓치리스트에서 영화를 찾을 수 없습니다")
-
-            self.db.delete(watchlist)
-            self.db.commit()
-            return True
-
-        except Exception as e:
-            self.db.rollback()
-            raise Exception(f"왓치리스트 제거 실패: {str(e)}")
-
-    async def get_user_watchlist(
-        self, user_id: int, limit: int = 20, offset: int = 0
-    ) -> list[WatchlistMovie]:
-        """사용자 왓치리스트 조회"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    WatchlistModel.created_at,
-                )
-                .join(WatchlistModel, MovieModel.movie_id == WatchlistModel.movie_id)
-                .where(WatchlistModel.user_id == user_id)
-                .order_by(WatchlistModel.created_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception as e:
-            raise Exception(f"왓치리스트 조회 실패: {str(e)}")
-
-    async def get_user_liked_movies(
-        self, user_id: int, limit: int = 20, offset: int = 0
-    ) -> list[WatchlistMovie]:
-        """사용자가 좋아요한 영화"""
-        try:
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    MovieModel.poster_url,
-                    MovieModel.release_date,
-                    MovieModel.average_rating,
-                    MovieLikeModel.created_at,
-                )
-                .join(MovieLikeModel, MovieModel.movie_id == MovieLikeModel.movie_id)
-                .where(MovieLikeModel.user_id == user_id)
-                .order_by(MovieLikeModel.created_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                WatchlistMovie(
-                    movie_id=row.movie_id,
-                    title=row.title,
-                    poster_url=row.poster_url,
-                    release_date=row.release_date,
-                    average_rating=row.average_rating,
-                    added_at=row.created_at,
-                )
-                for row in result
-            ]
-
-        except Exception as e:
-            raise Exception(f"좋아요 영화 조회 실패: {str(e)}")
-
-    async def get_all_movies(self, skip: int = 0, limit: int = 100) -> List[Movie]:
-        """개발용 - 전체 영화 조회"""
-        try:
-            stmt = (
-                select(MovieModel).offset(skip).limit(limit).order_by(MovieModel.created_at.desc())
-            )
-            result = self.db.execute(stmt)
-            return [Movie.from_orm(movie) for movie in result.scalars()]
-
-        except Exception as e:
-            raise Exception(f"영화 목록 조회 실패: {str(e)}")
-
-    # 유틸리티 메서드들
-    async def _is_movie_liked(self, user_id: int, movie_id: int) -> bool:
+    def _is_movie_liked_with_db(self, user_id: int, movie_id: int, db: Session) -> bool:
         """좋아요 여부 확인"""
         try:
             stmt = select(MovieLikeModel).where(
                 and_(MovieLikeModel.user_id == user_id, MovieLikeModel.movie_id == movie_id)
             )
-            return self.db.execute(stmt).scalar_one_or_none() is not None
+            return db.execute(stmt).scalar_one_or_none() is not None
         except:
             return False
 
-    async def _is_in_watchlist(self, user_id: int, movie_id: int) -> bool:
+    def _is_in_watchlist_with_db(self, user_id: int, movie_id: int, db: Session) -> bool:
         """왓치리스트 포함 여부 확인"""
         try:
             stmt = select(WatchlistModel).where(
                 and_(WatchlistModel.user_id == user_id, WatchlistModel.movie_id == movie_id)
             )
-            return self.db.execute(stmt).scalar_one_or_none() is not None
+            return db.execute(stmt).scalar_one_or_none() is not None
         except:
             return False
 
-    async def _get_movie_likes_count(self, movie_id: int) -> int:
+    def _get_movie_likes_count_with_db(self, movie_id: int, db: Session) -> int:
         """영화 좋아요 수"""
         try:
             stmt = select(func.count(MovieLikeModel.user_id)).where(
                 MovieLikeModel.movie_id == movie_id
             )
-            return self.db.execute(stmt).scalar() or 0
+            return db.execute(stmt).scalar() or 0
         except:
             return 0
 
+    def _genre_exists(self, genre_id: int, db: Session) -> bool:
+        """장르 존재 여부 확인"""
+        stmt = select(GenreModel).where(GenreModel.genre_id == genre_id)
+        return db.execute(stmt).scalar_one_or_none() is not None
+
+    def _movie_genre_connection_exists(self, movie_id: int, genre_id: int, db: Session) -> bool:
+        """영화-장르 연결 존재 여부 확인"""
+        stmt = select(MovieGenreModel).where(
+            and_(
+                MovieGenreModel.movie_id == movie_id,
+                MovieGenreModel.genre_id == genre_id,
+            )
+        )
+        return db.execute(stmt).scalar_one_or_none() is not None
+
+    def _person_exists(self, person_id: int, db: Session) -> bool:
+        """인물 존재 여부 확인"""
+        stmt = select(PersonModel).where(PersonModel.person_id == person_id)
+        return db.execute(stmt).scalar_one_or_none() is not None
+
+    def _cast_connection_exists(self, movie_id: int, person_id: int, job: str, db: Session) -> bool:
+        """출연진 연결 존재 여부 확인"""
+        stmt = select(MovieCastModel).where(
+            and_(
+                MovieCastModel.movie_id == movie_id,
+                MovieCastModel.person_id == person_id,
+                MovieCastModel.job == job,
+            )
+        )
+        return db.execute(stmt).scalar_one_or_none() is not None
+
+    def _build_movie_detail_dict(self, movie_model: MovieModel) -> dict:
+        """영화 상세 정보 딕셔너리 생성"""
+        return {
+            "movie_id": movie_model.movie_id,
+            "title": movie_model.title,
+            "original_title": movie_model.original_title,
+            "overview": movie_model.overview,
+            "release_date": movie_model.release_date,
+            "runtime": movie_model.runtime,
+            "poster_url": movie_model.poster_url,
+            "backdrop_url": movie_model.backdrop_url,
+            "average_rating": movie_model.average_rating,
+            "is_adult": movie_model.is_adult,
+            "trailer_url": movie_model.trailer_url,
+            "created_at": movie_model.created_at,
+            "updated_at": movie_model.updated_at,
+            "concise_review": movie_model.concise_review,
+            "concise_review_date": movie_model.concise_review_date,
+        }
+
+    # 유틸리티 메서드들
     def _parse_date(self, date_str: Optional[str]):
         if not date_str:
             return None
@@ -566,56 +672,3 @@ class MovieService:
             if video.get("type") == "Trailer" and video.get("site") == "YouTube":
                 return f"https://www.youtube.com/watch?v={video.get('key')}"
         return None
-
-    async def update_movie_concise_review(self, movie_id: int, concise_review: str) -> bool:
-        """영화 리뷰 요약 결과 업데이트"""
-        try:
-            stmt = select(MovieModel).where(MovieModel.movie_id == movie_id)
-            movie_model = self.db.execute(stmt).scalar_one_or_none()
-
-            if not movie_model:
-                return False
-
-            from datetime import datetime
-
-            movie_model.concise_review = concise_review
-            movie_model.concise_review_date = datetime.utcnow()
-
-            self.db.commit()
-            return True
-
-        except Exception as e:
-            self.db.rollback()
-            print(f"영화 리뷰 요약 업데이트 실패: {str(e)}")
-            return False
-
-    async def get_movies_with_comments(self, min_comments: int = 5) -> List[dict]:
-        """댓글이 있는 영화 목록 조회"""
-        try:
-            # 영화별 댓글 수 조회
-            stmt = (
-                select(
-                    MovieModel.movie_id,
-                    MovieModel.title,
-                    func.count(CommentModel.comment_id).label("comments_count"),
-                )
-                .join(CommentModel, MovieModel.movie_id == CommentModel.movie_id)
-                .where(CommentModel.is_public == True)
-                .group_by(MovieModel.movie_id, MovieModel.title)
-                .having(func.count(CommentModel.comment_id) >= min_comments)
-                .order_by(func.count(CommentModel.comment_id).desc())
-            )
-
-            result = self.db.execute(stmt)
-            return [
-                {"movie_id": row.movie_id, "title": row.title, "comments_count": row.comments_count}
-                for row in result
-            ]
-
-        except Exception as e:
-            print(f"댓글 있는 영화 조회 실패: {str(e)}")
-            return []
-
-    def __del__(self):
-        if hasattr(self, "db"):
-            self.db.close()

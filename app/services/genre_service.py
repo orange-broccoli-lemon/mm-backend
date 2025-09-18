@@ -223,7 +223,6 @@ class GenreService:
         finally:
             db.close()
 
-    # 헬퍼 메서드들 - 세션을 매개변수로 받음
     def _get_genre_model_by_id(self, genre_id: int, db: Session) -> Optional[GenreModel]:
         """장르 모델 조회"""
         stmt = select(GenreModel).where(GenreModel.genre_id == genre_id)
