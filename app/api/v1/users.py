@@ -13,6 +13,9 @@ from app.services.comment_service import CommentService
 from app.schemas.comment import CommentWithMovie
 from app.services.user_follow_service import UserFollowService
 from app.schemas.user_follow import UserFollow, FollowListResponse
+from fastapi import Form, UploadFile, File
+from app.schemas.user import UserProfileUpdateResponse
+
 
 router = APIRouter()
 
@@ -387,4 +390,67 @@ async def get_user_following_persons(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"팔로우 인물 조회 실패: {str(e)}",
+        )
+
+
+@router.put(
+    "/me/profile",
+    response_model=UserProfileUpdateResponse,
+    summary="내 프로필 수정",
+    description="현재 로그인한 사용자의 프로필을 수정합니다. 이름, 비밀번호, 프로필 이미지를 변경할 수 있습니다.",
+)
+async def update_my_profile(
+    name: Optional[str] = Form(None, min_length=2, max_length=50, description="변경할 사용자 이름"),
+    password: Optional[str] = Form(None, min_length=8, description="변경할 비밀번호"),
+    current_password: Optional[str] = Form(
+        None, description="현재 비밀번호 (비밀번호 변경 시 필수)"
+    ),
+    profile_image_url: Optional[UploadFile] = File(None, description="프로필 이미지 파일"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """내 프로필 수정"""
+    user_service = UserService()
+
+    try:
+        # 비밀번호 변경 시 현재 비밀번호 확인
+        if password and not current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="비밀번호 변경 시 현재 비밀번호가 필요합니다",
+            )
+
+        if password and current_password:
+            is_valid = await user_service.verify_current_password(
+                current_user.user_id, current_password
+            )
+            if not is_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="현재 비밀번호가 일치하지 않습니다",
+                )
+
+        update_data = {}
+        if name:
+            update_data["name"] = name
+        if password:
+            update_data["password"] = password
+
+        # 프로필 업데이트
+        updated_user, updated_fields = await user_service.update_user_profile(
+            current_user.user_id, update_data, profile_image_url
+        )
+
+        return UserProfileUpdateResponse(
+            message="프로필이 성공적으로 업데이트되었습니다",
+            updated_fields=updated_fields,
+            user=updated_user,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"프로필 업데이트 실패: {str(e)}",
         )
