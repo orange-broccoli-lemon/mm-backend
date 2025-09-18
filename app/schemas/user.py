@@ -2,6 +2,7 @@
 
 from typing import Optional
 from pydantic import BaseModel, Field
+from typing import List
 from datetime import datetime, date
 from decimal import Decimal
 from app.schemas.movie import WatchlistMovie
@@ -133,3 +134,19 @@ class UserDetail(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserProfileUpdate(BaseModel):
+    """사용자 프로필 수정 요청"""
+
+    name: Optional[str] = Field(None, min_length=2, max_length=50, description="변경할 사용자 이름")
+    password: Optional[str] = Field(None, min_length=8, description="변경할 비밀번호")
+    profile_image_url: Optional[str] = Field(None, description="프로필 이미지 URL")
+
+
+class UserProfileUpdateResponse(BaseModel):
+    """사용자 프로필 수정 응답"""
+
+    message: str
+    updated_fields: List[str]
+    user: User

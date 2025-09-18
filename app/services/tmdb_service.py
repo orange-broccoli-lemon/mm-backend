@@ -122,18 +122,22 @@ class TMDBService:
 
                     if media_type == "movie":
                         movie_result = MovieSearchResult(
-                            movie_id=result_data.get("id"),
+                            id=result_data.get("id"),
+                            media_type="movie",
                             title=result_data.get("title", ""),
+                            overview=result_data.get("overview"),
+                            release_date=self._parse_date(result_data.get("release_date")),
                             poster_path=result_data.get("poster_path"),
+                            vote_average=result_data.get("vote_average", 0.0),
                         )
                         results.append(movie_result)
 
                     elif media_type == "person":
                         person_result = PersonSearchResult(
-                            person_id=result_data.get("id"),
+                            id=result_data.get("id"),
+                            media_type="person",
                             name=result_data.get("name", ""),
                             profile_path=result_data.get("profile_path"),
-                            known_for_department=result_data.get("known_for_department"),
                         )
                         results.append(person_result)
 
