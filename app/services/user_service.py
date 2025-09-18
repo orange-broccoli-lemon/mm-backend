@@ -457,10 +457,10 @@ class UserService:
         except Exception:
             return []
 
-    async def _get_following_persons_list(
-        self, user_id: int, limit: int
-    ) -> list[UserFollowingPerson]:
-        """팔로우 중인 인물 목록"""
+    async def get_following_persons_list(
+        self, user_id: int, limit: int = 20, offset: int = 0
+    ) -> List[UserFollowingPerson]:
+        """팔로우 중인 인물 목록 (페이지네이션 지원)"""
         try:
             stmt = (
                 select(
@@ -473,6 +473,7 @@ class UserService:
                 .where(PersonFollowModel.user_id == user_id)
                 .order_by(PersonFollowModel.created_at.desc())
                 .limit(limit)
+                .offset(offset)  # 오프셋 추가
             )
 
             result = self.db.execute(stmt)
@@ -486,8 +487,19 @@ class UserService:
                 for row in result
             ]
 
-        except Exception:
+        except Exception as e:
+            print(f"팔로우 인물 조회 실패: {str(e)}")
             return []
+
+    async def get_following_persons_count(self, user_id: int) -> int:
+        """팔로우 중인 인물 총 개수"""
+        try:
+            stmt = select(func.count(PersonFollowModel.person_id)).where(
+                PersonFollowModel.user_id == user_id
+            )
+            return self.db.execute(stmt).scalar() or 0
+        except Exception:
+            return 0
 
     async def _get_recent_comments(self, user_id: int, limit: int) -> list[UserComment]:
         """최근 코멘트 목록"""
