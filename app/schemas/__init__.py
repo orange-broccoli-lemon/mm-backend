@@ -6,7 +6,6 @@ from .user import (
     UserCreateEmail,
     UserCreateGoogle,
     UserLoginEmail,
-    UserLoginGoogle,
     EmailCheck,
     TokenResponse,
 )
@@ -30,7 +29,6 @@ __all__ = [
     "UserCreateEmail",
     "UserCreateGoogle",
     "UserLoginEmail",
-    "UserLoginGoogle",
     "EmailCheck",
     "TokenResponse",
     "Person",

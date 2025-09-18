@@ -42,11 +42,6 @@ class UserLoginEmail(BaseModel):
     password: str = Field(description="비밀번호")
 
 
-class UserLoginGoogle(BaseModel):
-    google_id: str = Field(description="구글 ID")
-    email: str = Field(description="이메일")
-
-
 class EmailCheck(BaseModel):
     email: str = Field(description="확인할 이메일")
 
@@ -55,44 +50,6 @@ class TokenResponse(BaseModel):
     access_token: str = Field(description="액세스 토큰")
     token_type: str = Field(default="bearer", description="토큰 타입")
     user: User = Field(description="사용자 정보")
-
-
-class UserComment(BaseModel):
-    """사용자 상세 페이지에서 보여줄 코멘트 정보"""
-
-    comment_id: int = Field(description="댓글 ID")
-    movie_id: int = Field(description="영화 ID")
-    content: str = Field(description="댓글 내용")
-    is_spoiler: bool = Field(description="스포일러 여부")
-    likes_count: int = Field(description="좋아요 수")
-    created_at: datetime = Field(description="작성일시")
-
-    class Config:
-        from_attributes = True
-
-
-class UserFollower(BaseModel):
-    """팔로워 정보"""
-
-    user_id: int = Field(description="사용자 ID")
-    name: str = Field(description="사용자 이름")
-    profile_image_url: Optional[str] = Field(default=None, description="프로필 이미지 URL")
-    created_at: datetime = Field(description="팔로우 시작일")
-
-    class Config:
-        from_attributes = True
-
-
-class UserFollowing(BaseModel):
-    """팔로잉 정보"""
-
-    user_id: int = Field(description="사용자 ID")
-    name: str = Field(description="사용자 이름")
-    profile_image_url: Optional[str] = Field(default=None, description="프로필 이미지 URL")
-    created_at: datetime = Field(description="팔로우 시작일")
-
-    class Config:
-        from_attributes = True
 
 
 class UserFollowingPerson(BaseModel):
