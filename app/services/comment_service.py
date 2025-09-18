@@ -396,13 +396,29 @@ class CommentService:
             )
 
             result = self.db.execute(stmt)
-            comments = [
-                row[0] for row in result if row[0] and len(row[0].strip()) > 10
-            ]  # 10자 이상만
+            comments = [row[0] for row in result]
             return comments
 
         except Exception as e:
             print(f"사용자 댓글 텍스트 조회 실패: {str(e)}")
+            return []
+
+    async def get_movie_all_comments_text(self, movie_id: int) -> List[str]:
+        """영화의 모든 공개 댓글 텍스트만 조회"""
+        try:
+            stmt = (
+                select(CommentModel.content)
+                .where(and_(CommentModel.movie_id == movie_id, CommentModel.is_public == True))
+                .order_by(CommentModel.created_at.desc())
+                .limit(20)
+            )
+
+            result = self.db.execute(stmt)
+            comments = [row[0] for row in result]
+            return comments
+
+        except Exception as e:
+            print(f"영화 댓글 텍스트 조회 실패: {str(e)}")
             return []
 
     def __del__(self):

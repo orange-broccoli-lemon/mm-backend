@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     global scheduler_task
     scheduler_service = SchedulerService()
     scheduler_task = asyncio.create_task(scheduler_service.run_scheduler())
-    print("프로필 분석 스케줄러 시작됨")
+    print("스케줄러 시작됨")
 
     yield
 
