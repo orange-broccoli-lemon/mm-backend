@@ -20,6 +20,8 @@ class UserModel(Base):
     )
     last_login = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+    profile_review = Column(Text, nullable=True, comment="AI 분석 프로필 리뷰")
+    profile_review_date = Column(DateTime, nullable=True, comment="프로필 분석 일시")
 
     def __repr__(self):
         return f"<UserModel(id={self.user_id}, email='{self.email}')>"

@@ -6,6 +6,9 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.api.v1 import api_router
 from app.database import engine, Base
+import asyncio
+from contextlib import asynccontextmanager
+from app.services.scheduler_service import SchedulerService
 
 # 설정 로드
 settings = get_settings()
@@ -13,8 +16,31 @@ settings = get_settings()
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
 
+# 스케줄러 전역 변수
+scheduler_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 시작 시
+    global scheduler_task
+    scheduler_service = SchedulerService()
+    scheduler_task = asyncio.create_task(scheduler_service.run_scheduler())
+    print("스케줄러 시작됨")
+
+    yield
+
+    # 종료 시
+    if scheduler_task:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+    print("스케줄러 종료됨")
+
+
 # FastAPI 앱 생성
-# 프록시 경로에 맞춰 FastAPI 앱 생성
 app = FastAPI(
     title="mM",
     description="Movie Community Service",
@@ -23,6 +49,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     root_path="/api",
     servers=[{"url": "/api"}],
+    lifespan=lifespan,
 )
 
 

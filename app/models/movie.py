@@ -23,6 +23,8 @@ class MovieModel(Base):
     updated_at = Column(
         DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
+    concise_review = Column(Text, nullable=True, comment="AI 분석 리뷰 요약")
+    concise_review_date = Column(DateTime, nullable=True, comment="리뷰 분석 일시")
 
     def __repr__(self):
         return f"<MovieModel(movie_id={self.movie_id}, title='{self.title}')>"

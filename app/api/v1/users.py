@@ -73,7 +73,7 @@ async def get_my_profile(
 )
 async def get_user_watchlist(
     user_id: int = Path(description="조회할 사용자 ID"),
-    limit: int = Query(default=20, ge=1, le=100, description="가져올 영화 수"),
+    limit: int = Query(default=None, ge=1, description="가져올 영화 수"),
     offset: int = Query(default=0, ge=0, description="건너뛸 영화 수"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
@@ -90,7 +90,9 @@ async def get_user_watchlist(
                 status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다"
             )
 
-        watchlist = await movie_service.get_user_watchlist(user_id, limit, offset)
+        actual_limit = limit if limit is not None else 10000
+
+        watchlist = await movie_service.get_user_watchlist(user_id, actual_limit, offset)
         return watchlist
 
     except HTTPException:
@@ -107,7 +109,7 @@ async def get_user_watchlist(
 )
 async def get_user_liked_movies(
     user_id: int = Path(description="조회할 사용자 ID"),
-    limit: int = Query(default=20, ge=1, le=100, description="가져올 영화 수"),
+    limit: int = Query(default=None, ge=1, description="가져올 영화 수"),
     offset: int = Query(default=0, ge=0, description="건너뛸 영화 수"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
@@ -124,7 +126,9 @@ async def get_user_liked_movies(
                 status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다"
             )
 
-        liked_movies = await movie_service.get_user_liked_movies(user_id, limit, offset)
+        actual_limit = limit if limit is not None else 10000
+
+        liked_movies = await movie_service.get_user_liked_movies(user_id, actual_limit, offset)
         return liked_movies
 
     except HTTPException:
@@ -141,7 +145,7 @@ async def get_user_liked_movies(
 )
 async def get_user_comments(
     user_id: int = Path(description="조회할 사용자 ID"),
-    limit: int = Query(default=20, ge=1, le=100, description="가져올 댓글 수"),
+    limit: int = Query(default=None, ge=1, description="가져올 댓글 수"),
     offset: int = Query(default=0, ge=0, description="건너뛸 댓글 수"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
@@ -161,8 +165,10 @@ async def get_user_comments(
         # 본인 여부 확인
         is_own_profile = current_user and current_user.user_id == user_id
 
+        actual_limit = limit if limit is not None else 10000
+
         comments = await user_service.get_user_comments_with_movies(
-            user_id, limit, offset, is_own_profile
+            user_id, actual_limit, offset, is_own_profile
         )
         return comments
 
@@ -241,7 +247,7 @@ async def unfollow_user(
 )
 async def get_user_followers(
     user_id: int = Path(description="사용자 ID"),
-    limit: int = Query(default=20, ge=1, le=100, description="가져올 사용자 수"),
+    limit: int = Query(default=None, ge=1, description="가져올 사용자 수"),
     offset: int = Query(default=0, ge=0, description="건너뛸 사용자 수"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
@@ -259,7 +265,12 @@ async def get_user_followers(
             )
 
         current_user_id = current_user.user_id if current_user else None
-        followers = await follow_service.get_followers(user_id, current_user_id, offset, limit)
+
+        actual_limit = limit if limit is not None else 10000
+
+        followers = await follow_service.get_followers(
+            user_id, current_user_id, offset, actual_limit
+        )
         return followers
 
     except HTTPException:
@@ -276,7 +287,7 @@ async def get_user_followers(
 )
 async def get_user_following(
     user_id: int = Path(description="사용자 ID"),
-    limit: int = Query(default=20, ge=1, le=100, description="가져올 사용자 수"),
+    limit: int = Query(default=None, ge=1, description="가져올 사용자 수"),
     offset: int = Query(default=0, ge=0, description="건너뛸 사용자 수"),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
@@ -294,7 +305,12 @@ async def get_user_following(
             )
 
         current_user_id = current_user.user_id if current_user else None
-        following = await follow_service.get_following(user_id, current_user_id, offset, limit)
+
+        actual_limit = limit if limit is not None else 10000
+
+        following = await follow_service.get_following(
+            user_id, current_user_id, offset, actual_limit
+        )
         return following
 
     except HTTPException:
@@ -322,3 +338,53 @@ async def check_follow_relationship(
 
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get(
+    "/{user_id}/following-persons",
+    summary="팔로우 중인 인물 목록",
+    description="특정 사용자가 팔로우하는 배우/감독 목록을 조회합니다.",
+)
+async def get_user_following_persons(
+    user_id: int = Path(description="조회할 사용자 ID"),
+    limit: int = Query(default=None, ge=1, description="가져올 인물 수"),
+    offset: int = Query(default=0, ge=0, description="건너뛸 인물 수"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """사용자가 팔로우하는 인물 목록 조회"""
+    user_service = UserService()
+
+    try:
+        # 사용자 존재 확인
+        target_user = await user_service.get_user_by_id(user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다"
+            )
+
+        actual_limit = limit if limit is not None else 10000
+
+        # 팔로우 중인 인물 목록 조회
+        following_persons = await user_service.get_following_persons_list(
+            user_id, actual_limit, offset
+        )
+
+        # 총 개수 조회
+        total_count = await user_service.get_following_persons_count(user_id)
+
+        return {
+            "user_id": user_id,
+            "following_persons": following_persons,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"팔로우 인물 조회 실패: {str(e)}",
+        )
