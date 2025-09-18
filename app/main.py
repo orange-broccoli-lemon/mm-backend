@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
             await scheduler_task
         except asyncio.CancelledError:
             pass
-    print("프로필 분석 스케줄러 종료됨")
+    print("스케줄러 종료됨")
 
 
 # FastAPI 앱 생성

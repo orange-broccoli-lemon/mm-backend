@@ -620,6 +620,32 @@ class UserService:
         except Exception as e:
             raise Exception(f"사용자 조회 실패: {str(e)}")
 
+    async def get_users_with_comments(self, min_comments: int = 5) -> List[dict]:
+        """댓글이 있는 사용자 목록 조회 (프로필 분석용)"""
+        try:
+            stmt = (
+                select(
+                    UserModel.user_id,
+                    UserModel.name,
+                    func.count(CommentModel.comment_id).label("comments_count"),
+                )
+                .join(CommentModel, UserModel.user_id == CommentModel.user_id)
+                .where(and_(UserModel.is_active == True, CommentModel.is_public == True))
+                .group_by(UserModel.user_id, UserModel.name)
+                .having(func.count(CommentModel.comment_id) >= min_comments)
+                .order_by(func.count(CommentModel.comment_id).desc())
+            )
+
+            result = self.db.execute(stmt)
+            return [
+                {"user_id": row.user_id, "name": row.name, "comments_count": row.comments_count}
+                for row in result
+            ]
+
+        except Exception as e:
+            print(f"댓글 있는 사용자 조회 실패: {str(e)}")
+            return []
+
     def __del__(self):
         if hasattr(self, "db"):
             self.db.close()

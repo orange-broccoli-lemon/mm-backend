@@ -12,6 +12,7 @@ from app.models.watchlist import WatchlistModel
 from app.schemas.movie import Movie, MovieLike, Watchlist, WatchlistMovie
 from app.services.tmdb_service import TMDBService
 from app.database import get_db
+from app.models.comment import CommentModel
 
 
 class MovieService:
