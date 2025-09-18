@@ -11,7 +11,6 @@ from contextlib import asynccontextmanager
 from app.services.scheduler_service import SchedulerService
 from fastapi.staticfiles import StaticFiles
 
-
 # 설정 로드
 settings = get_settings()
 

@@ -29,6 +29,11 @@ class Settings(BaseSettings):
         description="Google OAuth 리디렉트 URI",
     )
 
+    openai_base_url: str = Field(
+        default="https://gms.ssafy.io/gmsapi/api.openai.com/v1", description="OpenAI API Base URL"
+    )
+    openai_model: str = Field(default="gpt-4.1", description="사용할 OpenAI 모델")
+
     # TMDB API 설정
     tmdb_api_key: str = Field(description="TMDB API Key")
     tmdb_access_token: str = Field(description="TMDB Access Token")
