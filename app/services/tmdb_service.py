@@ -1,11 +1,10 @@
-# app/services/tmdb_service.py
-
 from typing import List, Optional
 import httpx
 from datetime import datetime
 from decimal import Decimal
 from app.core.config import get_settings
-from app.schemas import Movie, MovieSearchResult, PersonSearchResult, SearchResult
+from app.schemas import Movie
+from app.schemas.search import MovieSearchResult, PersonSearchResult, SearchResult
 
 
 class TMDBService:
@@ -55,7 +54,6 @@ class TMDBService:
             language = self.default_language
 
         url = f"{self.settings.tmdb_base_url}/movie/popular"
-
         params = {"language": language, "page": 1, "region": "KR"}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -81,7 +79,6 @@ class TMDBService:
             language = self.default_language
 
         url = f"{self.settings.tmdb_base_url}/movie/{movie_id}"
-
         params = {"language": language, "append_to_response": "videos,credits,genres"}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -125,22 +122,18 @@ class TMDBService:
 
                     if media_type == "movie":
                         movie_result = MovieSearchResult(
-                            id=result_data.get("id"),
-                            media_type="movie",
+                            movie_id=result_data.get("id"),
                             title=result_data.get("title", ""),
-                            overview=result_data.get("overview"),
-                            release_date=self._parse_date(result_data.get("release_date")),
                             poster_path=result_data.get("poster_path"),
-                            vote_average=result_data.get("vote_average", 0.0),
                         )
                         results.append(movie_result)
 
                     elif media_type == "person":
                         person_result = PersonSearchResult(
-                            id=result_data.get("id"),
-                            media_type="person",
+                            person_id=result_data.get("id"),
                             name=result_data.get("name", ""),
                             profile_path=result_data.get("profile_path"),
+                            known_for_department=result_data.get("known_for_department"),
                         )
                         results.append(person_result)
 
