@@ -230,3 +230,69 @@ class TMDBService:
             except httpx.RequestError as e:
                 print(f"TMDB 장르 목록 조회 요청 실패: {str(e)}")
                 return None
+
+    async def search_movie_by_title(self, title: str, language: str = None) -> Optional[dict]:
+        """영화 제목으로 TMDB에서 영화 검색"""
+        if language is None:
+            language = self.default_language
+
+        url = f"{self.settings.tmdb_base_url}/search/movie"
+        params = {
+            "query": title,
+            "language": language,
+            "page": 1,
+            "region": "KR",
+            "include_adult": "false",
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, params=params, headers=self.settings.tmdb_headers)
+                response.raise_for_status()
+                data = response.json()
+                return data
+
+            except httpx.HTTPStatusError as e:
+                print(f"TMDB 영화 검색 실패: {e.response.status_code}")
+                return None
+            except httpx.RequestError as e:
+                print(f"TMDB 영화 검색 요청 실패: {str(e)}")
+                return None
+
+    def find_best_movie_match(self, search_results: dict, target_title: str) -> Optional[int]:
+        """검색 결과에서 가장 적합한 영화 매치 찾기"""
+        if not search_results or not search_results.get("results"):
+            return None
+
+        results = search_results.get("results", [])
+
+        # 정확한 제목 매치 우선 검색
+        target_title_lower = target_title.lower().strip()
+
+        for movie in results:
+            movie_title = movie.get("title", "").lower().strip()
+            original_title = movie.get("original_title", "").lower().strip()
+
+            # 정확한 매치 확인
+            if movie_title == target_title_lower or original_title == target_title_lower:
+                return movie.get("id")
+
+        # 정확한 매치가 없으면 포함 관계 확인
+        for movie in results:
+            movie_title = movie.get("title", "").lower().strip()
+            original_title = movie.get("original_title", "").lower().strip()
+
+            # 타겟 제목이 영화 제목에 포함되거나 그 반대인 경우
+            if (
+                target_title_lower in movie_title
+                or movie_title in target_title_lower
+                or target_title_lower in original_title
+                or original_title in target_title_lower
+            ):
+                return movie.get("id")
+
+        # 매치되는 것이 없으면 첫 번째 결과 반환 (가장 인기 있는 결과)
+        if results:
+            return results[0].get("id")
+
+        return None
