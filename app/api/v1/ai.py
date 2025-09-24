@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from app.ai import findbot
 from app.services.movie_service import MovieService
+from app.services.tmdb_service import TMDBService
 from app.schemas.ai import (
     FindBotRequest,
     FindBotResponse,
@@ -18,8 +19,8 @@ def get_movie_service() -> MovieService:
     return MovieService()
 
 
-def get_movie_service() -> MovieService:
-    return MovieService()
+def get_tmdb_service() -> TMDBService:
+    return TMDBService()
 
 
 @router.post(
@@ -31,6 +32,7 @@ def get_movie_service() -> MovieService:
 async def find_movie(
     request: FindBotRequest,
     movie_service: MovieService = Depends(get_movie_service),
+    tmdb_service: TMDBService = Depends(get_tmdb_service),
 ):
     """AI 영화 찾기"""
     try:
@@ -54,27 +56,49 @@ async def find_movie(
                 success=False, message=result.get("message", "영화를 찾을 수 없습니다")
             )
 
-        # 4. 성공한 경우 DB에 영화 저장
-        movie_id = result.get("movie_id")
-        if not movie_id:
+        # 4. AI가 찾은 영화 정보
+        ai_movie_title = result.get("title")
+        ai_movie_id = result.get("movie_id")
+
+        if not ai_movie_title or not ai_movie_id:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="TMDB ID가 응답에 없습니다",
+                detail="AI 응답에 영화 제목 또는 ID가 없습니다",
             )
 
+        # 5. TMDB에서 영화 제목으로 검색하여 ID 검증
+        verified_movie_id = ai_movie_id
+
         try:
-            # MovieService를 통해 영화 상세 정보 조회
-            await movie_service.get_movie_detail(movie_id)
-            print(f"영화 DB 저장 완료: {movie_id}")
+            print(f"TMDB에서 영화 검색 시작: {ai_movie_title}")
+            search_results = await tmdb_service.search_movie_by_title(ai_movie_title)
+
+            if search_results:
+                matched_id = tmdb_service.find_best_movie_match(search_results, ai_movie_title)
+                if matched_id:
+                    verified_movie_id = matched_id
+                    print(f"TMDB 검색으로 검증된 영화 ID: {verified_movie_id}")
+                else:
+                    print(f"TMDB 검색에서 매치되는 영화를 찾지 못함. AI ID 사용: {ai_movie_id}")
+            else:
+                print(f"TMDB 검색 결과 없음. AI ID 사용: {ai_movie_id}")
+
+        except Exception as search_error:
+            print(f"TMDB 검색 중 오류 발생: {str(search_error)}")
+            print(f"AI가 찾은 ID 사용: {ai_movie_id}")
+
+        # 6. 검증된 ID로 DB에 영화 저장
+        try:
+            await movie_service.get_movie_detail(verified_movie_id)
+            print(f"영화 DB 저장 완료: {verified_movie_id}")
         except Exception as db_error:
             print(f"영화 DB 저장 실패: {str(db_error)}")
-            # DB 저장 실패해도 AI 응답은 반환
 
-        # 5. 성공 응답 반환
+        # 7. 성공 응답 반환
         return FindBotResponse(
             success=True,
-            title=result.get("title"),
-            movie_id=movie_id,
+            title=ai_movie_title,
+            movie_id=verified_movie_id,
             reason=result.get("reason"),
             plot=result.get("plot"),
         )
